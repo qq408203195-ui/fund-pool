@@ -1,4 +1,4 @@
-import type { MetaInfo, PoolView, PoolTrace, FundDetail } from './types';
+import type { MetaInfo, PoolView, PoolTrace, FundDetail, Criteria } from './types';
 
 const BASE = '/api';
 
@@ -23,7 +23,23 @@ export type PoolQuery = {
   type?: string[];
   q?: string;
   mode?: string;
+  criteria?: Criteria;
 };
+
+/**
+ * 口径参数序列化。
+ * 回撤/收益在前端是百分比（50 表示前 50%），后端按比例接收，这里除 100。
+ * 经理年限关掉时传 0，后端识别为「不限」。
+ */
+function criteriaParams(c?: Criteria): Record<string, string> {
+  if (!c) return {};
+  return {
+    mgr: String(c.managerMinYears),
+    mdd: String(Math.round(c.mddKeepRatio * 100)),
+    ret: String(Math.round(c.returnKeepRatio * 100)),
+    purchase: c.purchaseMode,
+  };
+}
 
 export const api = {
   meta: () => get<MetaInfo>('/meta'),
@@ -33,7 +49,8 @@ export const api = {
       type: opts.type ?? [],
       q: opts.q ?? '',
       mode: opts.mode ?? 'filter',
+      ...criteriaParams(opts.criteria),
     }),
   fund: (code: string) => get<FundDetail>(`/funds/${code}`),
-  trace: (id: string) => get<PoolTrace>(`/pools/${id}/trace`),
+  trace: (id: string, criteria?: Criteria) => get<PoolTrace>(`/pools/${id}/trace`, criteriaParams(criteria)),
 };

@@ -70,6 +70,7 @@ export default function FundTable({ items, onSelect }: Props) {
               </th>
               <th>基金</th>
               <th className="col-hide-sm">公司</th>
+              <th className="col-hide-md">基金经理</th>
               {COLS.filter((c) => c.key !== 'rank').map((c) => (
                 <th
                   key={c.key}
@@ -105,6 +106,9 @@ export default function FundTable({ items, onSelect }: Props) {
                 </td>
                 <td className="col-hide-sm" style={{ color: 'var(--ink-2)' }}>
                   {f.company ?? '—'}
+                </td>
+                <td className="col-hide-md cell-manager" title={f.managerNames || ''}>
+                  {f.managerNames || '—'}
                 </td>
                 <td className={`r num ${signClass(f.ann3y)}`}>{fmtPct(f.ann3y)}</td>
                 <td className="r num">{fmtPct(f.mdd3y)}</td>

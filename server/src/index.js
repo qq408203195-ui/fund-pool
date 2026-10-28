@@ -7,6 +7,8 @@ import { DB_PATH, countFunds } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
+// 必须绑 0.0.0.0：云环境通过反向代理访问容器，绑 127.0.0.1 会让外部请求连不进来
+const HOST = process.env.HOST || '0.0.0.0';
 
 const app = express();
 app.use(express.json());
@@ -20,8 +22,8 @@ if (fs.existsSync(distDir)) {
   });
 }
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`[fund-pool] API 已启动  http://127.0.0.1:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`[fund-pool] API 已启动  http://${HOST}:${PORT}`);
   console.log(`[fund-pool] 数据库 ${DB_PATH}`);
   console.log(`[fund-pool] 基金数量 ${countFunds()}`);
   if (!fs.existsSync(distDir)) {

@@ -1,7 +1,7 @@
 import { db, getMeta, dataVersion } from './db.js';
 import { POOLS, POOL_BY_ID, POOL_GROUPS } from './config/pools.js';
 import { MIN_TRACK_YEARS, MIN_SCALE_YI } from './config/caliber.js';
-import { screenPool, typeBreakdown, companyBreakdown } from './engine/screen.js';
+import { screenPool, normalizeCriteria, typeBreakdown, companyBreakdown } from './engine/screen.js';
 import { shareClassKey } from './engine/metrics.js';
 
 let cache = { version: null, funds: null, pools: new Map() };
@@ -49,9 +49,12 @@ export function poolUniverse(pool, funds) {
   return [...byKey.values()];
 }
 
-export function getPoolResult(poolId) {
+export function getPoolResult(poolId, rawCriteria) {
+  const criteria = normalizeCriteria(rawCriteria);
+  // 同一池子在不同口径下结果不同，缓存必须带上口径，否则拖一次滑块就串味
+  const cacheKey = `${poolId}|${criteria.managerMinYears}|${criteria.mddKeepRatio}|${criteria.returnKeepRatio}|${criteria.purchaseMode}`;
   const v = dataVersion();
-  const cached = cache.pools.get(poolId);
+  const cached = cache.pools.get(cacheKey);
   if (cached && cached.version === v) return cached.value;
 
   const pool = POOL_BY_ID[poolId];
@@ -59,7 +62,7 @@ export function getPoolResult(poolId) {
 
   const funds = loadFunds();
   const universe = poolUniverse(pool, funds);
-  const result = screenPool(pool, universe);
+  const result = screenPool(pool, universe, criteria);
 
   const value = {
     pool: {
@@ -80,7 +83,7 @@ export function getPoolResult(poolId) {
     // 逐层名单不进主视图（体积大），单独走 getPoolTrace
   };
 
-  cache.pools.set(poolId, { version: v, value, stages: result.stages });
+  cache.pools.set(cacheKey, { version: v, value, stages: result.stages });
   return value;
 }
 
@@ -88,19 +91,17 @@ export function getPoolResult(poolId) {
  * 逐层追溯：每一层的完整进出名单。
  * 与 getPoolResult 共用同一份缓存，不重复跑管线。
  */
-export function getPoolTrace(poolId) {
-  const base = getPoolResult(poolId);
+export function getPoolTrace(poolId, rawCriteria) {
+  const criteria = normalizeCriteria(rawCriteria);
+  const base = getPoolResult(poolId, criteria);
   if (!base) return null;
-  const entry = cache.pools.get(poolId);
+  const cacheKey = `${poolId}|${criteria.managerMinYears}|${criteria.mddKeepRatio}|${criteria.returnKeepRatio}|${criteria.purchaseMode}`;
+  const entry = cache.pools.get(cacheKey);
   const stages = entry?.stages ?? [];
 
   return {
     pool: base.pool,
-    caliber: {
-      managerMinYears: 3,
-      keepRatio: 0.5,
-      rankBasis: '池内排名',
-    },
+    caliber: criteria,
     stages: stages.map((s) => ({
       key: s.key,
       label: s.label,
@@ -153,7 +154,7 @@ function applyFilters(items, { company, companyList, typeList, q }) {
  * mode = 'recompute' 先按公司/类型缩小范围，再在这个范围内重跑整条管线
  */
 export function getPoolView(poolId, query = {}) {
-  const base = getPoolResult(poolId);
+  const base = getPoolResult(poolId, query);
   if (!base) return null;
 
   const mode = query.mode === 'recompute' ? 'recompute' : 'filter';
@@ -166,7 +167,7 @@ export function getPoolView(poolId, query = {}) {
       const set = new Set([].concat(query.company));
       universe = universe.filter((f) => set.has(f.company));
     }
-    const result = screenPool(pool, universe);
+    const result = screenPool(pool, universe, query);
     const items = applyFilters(result.items, { typeList: query.types, q: query.q });
     return {
       ...base,

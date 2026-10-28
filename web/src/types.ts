@@ -18,6 +18,14 @@ export interface Caliber {
   calmarFormula: string;
 }
 
+/** 用户可调节的筛选口径，与后端 normalizeCriteria 的字段一一对应 */
+export interface Criteria {
+  managerMinYears: number;
+  mddKeepRatio: number;
+  returnKeepRatio: number;
+  purchaseMode: 'strict' | 'loose';
+}
+
 export interface MetaInfo {
   groups: { id: string; name: string; desc: string }[];
   pools: PoolSummary[];
@@ -84,6 +92,7 @@ export interface PoolView {
     passMdd: number;
     passReturn: number;
     selected: number;
+    criteria?: Criteria;
   };
   items: FundItem[];
   rejects: RejectReason[];
@@ -135,6 +144,6 @@ export interface TraceStage {
 
 export interface PoolTrace {
   pool: PoolView['pool'];
-  caliber: { managerMinYears: number; keepRatio: number; rankBasis: string };
+  caliber: Criteria;
   stages: TraceStage[];
 }

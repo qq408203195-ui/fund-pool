@@ -6,6 +6,21 @@ import { getMeta } from '../db.js';
 export function createApiRouter() {
   const router = express.Router();
 
+  /**
+   * 从 query 解析用户可调节的筛选口径。
+   * 前端传百分比（mdd=50 表示保留回撤最好的前 50%），后端按比例使用。
+   * 未传的项返回 undefined，由 normalizeCriteria 回落到默认值。
+   */
+  const criteriaOf = (req) => {
+    const pct = (v) => (v == null || v === '' ? undefined : Number(v) / 100);
+    return {
+      managerMinYears: req.query.mgr == null || req.query.mgr === '' ? undefined : Number(req.query.mgr),
+      mddKeepRatio: pct(req.query.mdd),
+      returnKeepRatio: pct(req.query.ret),
+      purchaseMode: req.query.purchase === 'loose' ? 'loose' : req.query.purchase === 'strict' ? 'strict' : undefined,
+    };
+  };
+
   router.get('/health', (_req, res) => {
     res.json({ ok: true, dataDate: getMeta('data_date', null) });
   });
@@ -24,7 +39,7 @@ export function createApiRouter() {
     if (!POOL_BY_ID[id]) {
       return res.status(404).json({ error: `未找到池子：${id}` });
     }
-    const trace = getPoolTrace(id);
+    const trace = getPoolTrace(id, criteriaOf(req));
     if (!trace) return res.status(404).json({ error: '池子数据不可用' });
     res.json(trace);
   });
@@ -40,6 +55,7 @@ export function createApiRouter() {
       types: asArray(req.query.type),
       q: req.query.q || '',
       mode: req.query.mode,
+      ...criteriaOf(req),
     });
     if (!view) return res.status(404).json({ error: '池子数据不可用' });
     res.json(view);

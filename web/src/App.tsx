@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import type { MetaInfo, PoolTrace, PoolView } from './types';
+import type { Criteria, MetaInfo, PoolTrace, PoolView } from './types';
 import Sidebar from './components/Sidebar';
 import Funnel, { type StageKey } from './components/Funnel';
 import StageTrace from './components/StageTrace';
@@ -9,6 +9,7 @@ import FundTable from './components/FundTable';
 import Scatter from './components/Scatter';
 import FundDrawer from './components/FundDrawer';
 import EmptyState from './components/EmptyState';
+import FilterControls, { DEFAULT_CRITERIA } from './components/FilterControls';
 import { fmtPercentile } from './utils/format';
 
 const DEFAULT_POOL = 'active-equity';
@@ -26,14 +27,23 @@ export default function App() {
   const [showScatter, setShowScatter] = useState(true);
   const [drawerCode, setDrawerCode] = useState<string | null>(null);
 
-  // 逐层追溯：默认展开第一层，让「池子里都有哪些基金」开屏即可见
-  // ?stage=passMdd 这类链接可直接定位到某一层，方便分享具体某一步的结果
+  // 筛选口径：用户可调。滑块拖动时先更新 UI，250ms 无操作才真正打接口，
+  // 避免一次拖动打出几十个请求
+  const [criteria, setCriteria] = useState<Criteria>(DEFAULT_CRITERIA);
+  const [appliedCriteria, setAppliedCriteria] = useState<Criteria>(DEFAULT_CRITERIA);
+  useEffect(() => {
+    const t = setTimeout(() => setAppliedCriteria(criteria), 250);
+    return () => clearTimeout(t);
+  }, [criteria]);
+
+  // 逐层追溯：默认落在「入榜」层，开屏直接看到最终推荐结果
+  // ?stage=universe 这类链接可直接定位到某一层，方便分享具体某一步的结果
   const [trace, setTrace] = useState<PoolTrace | null>(null);
   const [traceErr, setTraceErr] = useState('');
   const [activeStage, setActiveStage] = useState<StageKey>(() => {
     const s = new URLSearchParams(window.location.search).get('stage');
     const allowed: StageKey[] = ['universe', 'passPurchase', 'passManager', 'passMdd', 'passReturn', 'selected'];
-    return allowed.includes(s as StageKey) ? (s as StageKey) : 'universe';
+    return allowed.includes(s as StageKey) ? (s as StageKey) : 'selected';
   });
   const [showTrace, setShowTrace] = useState(true);
 
@@ -55,7 +65,7 @@ export default function App() {
     setPoolId(id);
     setSelectedCompanies([]);
     setQ('');
-    setActiveStage('universe');
+    setActiveStage('selected');
   }, []);
 
   useEffect(() => {
@@ -63,7 +73,7 @@ export default function App() {
     setLoading(true);
     setErr('');
     api
-      .pool(poolId, { company: selectedCompanies, q, mode })
+      .pool(poolId, { company: selectedCompanies, q, mode, criteria: appliedCriteria })
       .then((v) => {
         if (!alive) return;
         setView(v);
@@ -77,14 +87,14 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [poolId, selectedCompanies, q, mode]);
+  }, [poolId, selectedCompanies, q, mode, appliedCriteria]);
 
   useEffect(() => {
     let alive = true;
     setTrace(null);
     setTraceErr('');
     api
-      .trace(poolId)
+      .trace(poolId, appliedCriteria)
       .then((t) => {
         if (alive) setTrace(t);
       })
@@ -94,12 +104,28 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [poolId]);
+  }, [poolId, appliedCriteria]);
 
   const totalSelected = useMemo(
     () => meta?.pools.reduce((s, p) => s + p.selected, 0) ?? 0,
     [meta]
   );
+
+  // 管线说明跟着用户的滑块走，避免页面写着「经理满 3 年」而实际在按 5 年筛
+  const pipelineText = useMemo(() => {
+    const steps = [
+      criteria.purchaseMode === 'strict' ? '可买入（开放申购 / 场内交易）' : '可买入（放宽：含限大额、暂停大额申购）',
+      criteria.managerMinYears <= 0 ? '经理年限不限' : `经理满 ${criteria.managerMinYears} 年`,
+      criteria.mddKeepRatio >= 1
+        ? '回撤不限'
+        : `剔除近 3 年最大回撤排名池内后 ${Math.round((1 - criteria.mddKeepRatio) * 100)}%`,
+      criteria.returnKeepRatio >= 1
+        ? '收益不限'
+        : `剔除近 3 年年化收益排名池内后 ${Math.round((1 - criteria.returnKeepRatio) * 100)}%`,
+      '按卡玛比率降序',
+    ];
+    return steps.join(' → ') + '。';
+  }, [criteria]);
 
   return (
     <div className="app">
@@ -143,10 +169,19 @@ export default function App() {
               <Funnel
                 stats={view.stats}
                 active={activeStage}
+                criteria={criteria}
                 onSelect={(k) => {
                   setActiveStage(k);
                   setShowTrace(true);
                 }}
+              />
+
+              <FilterControls
+                value={criteria}
+                onChange={setCriteria}
+                selected={view.stats.selected}
+                universe={view.stats.universe}
+                disabled={loading}
               />
 
               {/* 池子被筛空时，原因必须顶在最前面。否则用户要先滚过几十行逐层明细
@@ -169,7 +204,7 @@ export default function App() {
                   <b>池内样本口径</b>：初始基金份额（同一只基金的 A/C/E 类不重复占位）、
                   成立满 {meta?.caliber.minTrackYears ?? 5} 年、最新规模 ≥ {meta?.caliber.minScaleYi ?? 2} 亿元（剔除迷你基金）。
                   <br />
-                  <b>筛选管线</b>：可买入（开放申购 / 场内交易）→ 经理满 3 年 → 剔除近 3 年最大回撤排名池内后 50% → 剔除近 3 年年化收益排名后 50% → 按卡玛比率降序。
+                  <b>筛选管线</b>：{pipelineText}
                   「同类」口径为<b>池内排名</b>，不是 Wind 二级分类同类。年化收益由近 3 年累计涨幅折算几何年化，卡玛比率 = 年化收益 ÷ |最大回撤|。
                   <br />
                   <b>收益口径</b>：近 3 年涨幅与最大回撤均由<b>复权净值</b>逐日重算（分红按再投资处理）。

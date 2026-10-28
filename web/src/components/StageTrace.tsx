@@ -3,13 +3,17 @@ import type { PoolTrace, TraceRow, TraceStage } from '../types';
 import { fmtNum, fmtPct, fmtScale, fmtYears, signClass } from '../utils/format';
 
 type ResultFilter = 'all' | 'pass' | 'drop';
+type SortKey = 'managerTenure' | 'ann3y' | 'mdd3y' | 'calmar';
 
 /**
  * 逐层追溯面板
  *
- * 每一层都给出「进入本层的完整名单 + 本层判定结果」，
- * 而不是只给一个剩余数量——这样「某只基金为什么没进榜」可以被逐条回答。
- * 第一层按投资类型分组呈现，其余层按本层指标（回撤排名 / 收益排名 / 卡玛）排列。
+ * 每一层都给出「进入本层的完整名单」，而不是只给一个剩余数量——
+ * 这样「某只基金为什么没进榜」可以被逐条回答。
+ * 第一层按投资类型分组呈现，其余层按本层指标排列。
+ *
+ * 通过/剔除不再单占一列（那是整列最宽却信息最少的一列），
+ * 改为行首状态点 + 行淡出 + 悬停提示，把宽度让给基金经理与可排序指标。
  */
 export default function StageTrace({
   trace,
@@ -23,6 +27,8 @@ export default function StageTrace({
   const stage = trace.stages.find((s) => s.key === stageKey) ?? trace.stages[0];
   const [typeFilter, setTypeFilter] = useState<string>('全部');
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [asc, setAsc] = useState(false);
 
   const isUniverse = stage.key === 'universe';
 
@@ -41,6 +47,7 @@ export default function StageTrace({
     setLastStage(stage.key);
     setTypeFilter('全部');
     setResultFilter('all');
+    setSortKey(null);
   }
 
   const options = useMemo(() => {
@@ -60,17 +67,38 @@ export default function StageTrace({
    */
   const canGroup = options.length > 1 && stage.rows.length / options.length >= 2;
 
+  const clickSort = (k: SortKey) => {
+    if (k === sortKey) setAsc((v) => !v);
+    else {
+      setSortKey(k);
+      setAsc(false); // 首点一律「最优在前」：年限长的、收益高的、回撤小的、卡玛高的
+    }
+  };
+
   const rows = useMemo(() => {
     let out = stage.rows;
     if (typeFilter !== '全部') out = out.filter((r) => String(r[groupField] || '未分类') === typeFilter);
     if (!isUniverse && resultFilter === 'pass') out = out.filter((r) => r.ok);
     if (!isUniverse && resultFilter === 'drop') out = out.filter((r) => !r.ok);
+    if (sortKey) {
+      const arr = [...out];
+      arr.sort((a, b) => {
+        const av = a[sortKey];
+        const bv = b[sortKey];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1; // 缺失值永远垫底，不参与升/降序翻转
+        if (bv == null) return -1;
+        return asc ? (av > bv ? 1 : av < bv ? -1 : 0) : av < bv ? 1 : av > bv ? -1 : 0;
+      });
+      return arr;
+    }
     return out;
-  }, [stage, typeFilter, resultFilter, isUniverse, groupField]);
+  }, [stage, typeFilter, resultFilter, isUniverse, groupField, sortKey, asc]);
 
-  // 第一层在「全部分组」下按分组维度分段，段序即后端排好的顺序
+  // 第一层在「全部分组」下按分组维度分段，段序即后端排好的顺序；
+  // 一旦用户点了排序，就平铺展示——跨组比较才有意义，组内各排各的会让人读不明白
   const groups = useMemo(() => {
-    if (!isUniverse || typeFilter !== '全部' || !canGroup) return null;
+    if (!isUniverse || typeFilter !== '全部' || !canGroup || sortKey) return null;
     const map = new Map<string, TraceRow[]>();
     for (const r of rows) {
       const k = String(r[groupField] || '未分类');
@@ -79,7 +107,7 @@ export default function StageTrace({
       map.set(k, list);
     }
     return [...map.entries()];
-  }, [rows, isUniverse, typeFilter, groupField, canGroup]);
+  }, [rows, isUniverse, typeFilter, groupField, canGroup, sortKey]);
 
   return (
     <div className="trace-card">
@@ -133,6 +161,13 @@ export default function StageTrace({
             ))}
           </div>
         )}
+        {sortKey && (
+          <div className="trace-chips">
+            <Chip active onClick={() => setSortKey(null)}>
+              已按{sortLabel(sortKey)}排序 · 点此还原
+            </Chip>
+          </div>
+        )}
       </div>
 
       <div className="trace-table-wrap">
@@ -143,12 +178,12 @@ export default function StageTrace({
               <th>基金</th>
               <th style={{ width: 96 }}>{groupField === 'indexTheme' ? '指数 / 主题' : '类型'}</th>
               <th style={{ width: 100 }}>公司</th>
-              <th style={{ width: 116 }}>申购状态</th>
-              <th style={{ width: 76 }}>经理年限</th>
-              <th style={{ width: 84 }}>近3年年化</th>
-              <th style={{ width: 88 }}>近3年回撤</th>
-              <th style={{ width: 64 }}>卡玛</th>
-              <th style={{ width: 128 }}>本层结论</th>
+              <th style={{ width: 108 }}>申购状态</th>
+              <th style={{ width: 116 }}>基金经理</th>
+              <SortTh k="managerTenure" label="经理年限" w={84} sortKey={sortKey} asc={asc} onClick={clickSort} />
+              <SortTh k="ann3y" label="近3年年化" w={92} sortKey={sortKey} asc={asc} onClick={clickSort} />
+              <SortTh k="mdd3y" label="近3年回撤" w={96} sortKey={sortKey} asc={asc} onClick={clickSort} />
+              <SortTh k="calmar" label="卡玛" w={72} sortKey={sortKey} asc={asc} onClick={clickSort} />
             </tr>
           </thead>
           <tbody>
@@ -177,6 +212,39 @@ export default function StageTrace({
         {rows.length === 0 && <div className="trace-empty">当前筛选条件下没有基金。</div>}
       </div>
     </div>
+  );
+}
+
+function sortLabel(k: SortKey): string {
+  return { managerTenure: '经理年限', ann3y: '年化收益', mdd3y: '最大回撤', calmar: '卡玛比率' }[k];
+}
+
+function SortTh({
+  k,
+  label,
+  w,
+  sortKey,
+  asc,
+  onClick,
+}: {
+  k: SortKey;
+  label: string;
+  w: number;
+  sortKey: SortKey | null;
+  asc: boolean;
+  onClick: (k: SortKey) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <th
+      style={{ width: w }}
+      className={`sortable${active ? ' sorted' : ''}`}
+      onClick={() => onClick(k)}
+      title={`点击按${label}排序`}
+    >
+      {label}
+      <span className={`sort-arrow${active ? ' on' : ''}`}>{active ? (asc ? '▲' : '▼') : '⇅'}</span>
+    </th>
   );
 }
 
@@ -219,14 +287,22 @@ function Row({
   isUniverse?: boolean;
   showTheme?: boolean;
 }) {
+  const dropped = !row.ok;
   return (
-    <tr onClick={() => onSelectFund(row.code)} className={row.ok ? '' : 'trace-row-dropped'}>
+    <tr
+      onClick={() => onSelectFund(row.code)}
+      className={dropped ? 'trace-row-dropped' : ''}
+      title={dropped ? `本层剔除：${row.reason || '未通过'}` : undefined}
+    >
       <td className="cell-rank">
-        {row.layerRank != null ? (
-          <span className="rank-mini">{row.layerRank}</span>
-        ) : (
-          <span className="rank-mini muted">{index}</span>
-        )}
+        <span className="rank-cell">
+          {row.layerRank != null ? (
+            <span className="rank-mini">{row.layerRank}</span>
+          ) : (
+            <span className="rank-mini muted">{index}</span>
+          )}
+          {!isUniverse && <span className={`dot-state ${dropped ? 'cut' : 'ok'}`} />}
+        </span>
       </td>
       <td>
         <div className="fund-name">{row.name}</div>
@@ -249,27 +325,13 @@ function Row({
           {row.purchaseStatus || '—'}
         </span>
       </td>
+      <td className="cell-manager" title={row.managerNames || ''}>
+        {row.managerNames || '—'}
+      </td>
       <td className="num">{fmtYears(row.managerTenure)}</td>
       <td className={`num ${signClass(row.ann3y)}`}>{fmtPct(row.ann3y)}</td>
       <td className="num">{fmtPct(row.mdd3y)}</td>
       <td className="num strong">{fmtNum(row.calmar)}</td>
-      <td>
-        {row.ok ? (
-          isUniverse ? (
-            <span className="verdict neutral">在池</span>
-          ) : row.layerRank != null ? (
-            <span className="verdict pass">
-              通过 · 排 {row.layerRank}/{row.layerTotal}
-            </span>
-          ) : (
-            <span className="verdict pass">通过</span>
-          )
-        ) : (
-          <span className="verdict cut" title={row.reason || ''}>
-            {row.reason}
-          </span>
-        )}
-      </td>
     </tr>
   );
 }

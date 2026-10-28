@@ -1,0 +1,32 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物（由 npm run build 生成）
+web/dist/
+
+# 数据库与运行时文件（由 npm run import 从快照重建）
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+
+# 采集中间产物（体积大，可由 sync_eastmoney.py 重新生成）
+server/data/raw/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# 截图与临时文件
+*.png
+!server/data/snapshot/**/*.png
+_tmp/
+.tmp/
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

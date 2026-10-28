@@ -1456,17 +1456,40 @@ table.trace-table {
 }
 
 /* ── 筛选口径调节器 ───────────────────────────────── */
+/* 两行结构：第一行是业绩窗口（它决定后三个指标的语义，必须单独一行），
+   第二行是申购口径与四个滑块。外层用纵向 flex，不要再横排，
+   否则两个 .criteria-row 会并排挤在一起、滑块叠到第一行上。 */
 .criteria-bar {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   margin: 12px 0 14px;
+}
+
+.criteria-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.criteria-row.secondary {
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+/* 五档窗口连排，156px 的默认宽度装不下，会顶到旁边的「入榜/重置」 */
+.criteria-item.window {
+  min-width: 330px;
+}
+
+.criteria-item.window .seg-btn {
+  padding: 4px 10px;
 }
 
 .criteria-lead {

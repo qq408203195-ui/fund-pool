@@ -25,6 +25,8 @@ export default function StageTrace({
   onSelectFund: (code: string) => void;
 }) {
   const stage = trace.stages.find((s) => s.key === stageKey) ?? trace.stages[0];
+  // 列头年份跟着用户选的业绩窗口走，避免出现「窗口是 5 年、表头写着近3年」的错位
+  const years = trace.caliber?.years ?? 3;
   const [typeFilter, setTypeFilter] = useState<string>('全部');
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
@@ -181,8 +183,8 @@ export default function StageTrace({
               <th style={{ width: 108 }}>申购状态</th>
               <th style={{ width: 116 }}>基金经理</th>
               <SortTh k="managerTenure" label="经理年限" w={84} sortKey={sortKey} asc={asc} onClick={clickSort} />
-              <SortTh k="ann3y" label="近3年年化" w={92} sortKey={sortKey} asc={asc} onClick={clickSort} />
-              <SortTh k="mdd3y" label="近3年回撤" w={96} sortKey={sortKey} asc={asc} onClick={clickSort} />
+              <SortTh k="ann3y" label={`近${years}年年化`} w={92} sortKey={sortKey} asc={asc} onClick={clickSort} />
+              <SortTh k="mdd3y" label={`近${years}年回撤`} w={96} sortKey={sortKey} asc={asc} onClick={clickSort} />
               <SortTh k="calmar" label="卡玛" w={72} sortKey={sortKey} asc={asc} onClick={clickSort} />
             </tr>
           </thead>

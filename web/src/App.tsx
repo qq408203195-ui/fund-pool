@@ -42,7 +42,15 @@ export default function App() {
   const [traceErr, setTraceErr] = useState('');
   const [activeStage, setActiveStage] = useState<StageKey>(() => {
     const s = new URLSearchParams(window.location.search).get('stage');
-    const allowed: StageKey[] = ['universe', 'passPurchase', 'passManager', 'passMdd', 'passReturn', 'selected'];
+    const allowed: StageKey[] = [
+      'universe',
+      'passPurchase',
+      'passManager',
+      'passMdd',
+      'passReturn',
+      'passCalmar',
+      'selected',
+    ];
     return allowed.includes(s as StageKey) ? (s as StageKey) : 'selected';
   });
   const [showTrace, setShowTrace] = useState(true);
@@ -113,16 +121,21 @@ export default function App() {
 
   // 管线说明跟着用户的滑块走，避免页面写着「经理满 3 年」而实际在按 5 年筛
   const pipelineText = useMemo(() => {
+    const y = criteria.years;
     const steps = [
+      `业绩窗口近 ${y} 年`,
       criteria.purchaseMode === 'strict' ? '可买入（开放申购 / 场内交易）' : '可买入（放宽：含限大额、暂停大额申购）',
       criteria.managerMinYears <= 0 ? '经理年限不限' : `经理满 ${criteria.managerMinYears} 年`,
       criteria.mddKeepRatio >= 1
         ? '回撤不限'
-        : `剔除近 3 年最大回撤排名池内后 ${Math.round((1 - criteria.mddKeepRatio) * 100)}%`,
+        : `剔除近 ${y} 年最大回撤排名池内后 ${Math.round((1 - criteria.mddKeepRatio) * 100)}%`,
       criteria.returnKeepRatio >= 1
         ? '收益不限'
-        : `剔除近 3 年年化收益排名池内后 ${Math.round((1 - criteria.returnKeepRatio) * 100)}%`,
-      '按卡玛比率降序',
+        : `剔除近 ${y} 年年化收益排名池内后 ${Math.round((1 - criteria.returnKeepRatio) * 100)}%`,
+      criteria.calmarKeepRatio >= 1
+        ? '卡玛不限'
+        : `剔除近 ${y} 年卡玛比率排名池内后 ${Math.round((1 - criteria.calmarKeepRatio) * 100)}%`,
+      `按近 ${y} 年卡玛比率降序`,
     ];
     return steps.join(' → ') + '。';
   }, [criteria]);
@@ -205,16 +218,16 @@ export default function App() {
                   成立满 {meta?.caliber.minTrackYears ?? 5} 年、最新规模 ≥ {meta?.caliber.minScaleYi ?? 2} 亿元（剔除迷你基金）。
                   <br />
                   <b>筛选管线</b>：{pipelineText}
-                  「同类」口径为<b>池内排名</b>，不是 Wind 二级分类同类。年化收益由近 3 年累计涨幅折算几何年化，卡玛比率 = 年化收益 ÷ |最大回撤|。
+                  「同类」口径为<b>池内排名</b>，不是 Wind 二级分类同类。年化收益由近 {criteria.years} 年累计涨幅折算几何年化，卡玛比率 = 年化收益 ÷ |最大回撤|。
                   <br />
-                  <b>收益口径</b>：近 3 年涨幅与最大回撤均由<b>复权净值</b>逐日重算（分红按再投资处理）。
+                  <b>收益口径</b>：近 {criteria.years} 年涨幅与最大回撤均由<b>复权净值</b>逐日重算（分红按再投资处理）。
                   抽样与 Wind 复权净值增长率对账：最大回撤误差 ≤ 0.03 个百分点，区间收益相对误差 &lt; 2%
                   （残差来自日增长率保留两位小数后的累乘）。
                   {(view.stats.managerUnknown ?? 0) > 0 && (
                     <>
                       <br />
                       <b style={{ color: '#a5601c' }}>数据缺口</b>：当前 {view.stats.managerUnknown} 只基金的基金经理任职起始日在东财口径下缺失，
-                      「经理满 3 年」这一步暂按待核放行，页面不对其做剔除。该列由东财 F10 经理变动页逐只回填，回填后重新出榜。
+                      「经理满 {criteria.managerMinYears} 年」这一步暂按待核放行，页面不对其做剔除。该列由东财 F10 经理变动页逐只回填，回填后重新出榜。
                     </>
                   )}
                 </span>
@@ -366,6 +379,7 @@ export default function App() {
       {drawerCode && (
         <FundDrawer
           code={drawerCode}
+          criteria={appliedCriteria}
           onClose={() => setDrawerCode(null)}
           onJumpPool={(id) => {
             selectPool(id);

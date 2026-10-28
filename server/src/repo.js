@@ -1,8 +1,16 @@
 import { db, getMeta, dataVersion } from './db.js';
 import { POOLS, POOL_BY_ID, POOL_GROUPS } from './config/pools.js';
 import { MIN_TRACK_YEARS, MIN_SCALE_YI } from './config/caliber.js';
-import { screenPool, normalizeCriteria, typeBreakdown, companyBreakdown } from './engine/screen.js';
-import { shareClassKey } from './engine/metrics.js';
+import {
+  screenPool,
+  normalizeCriteria,
+  typeBreakdown,
+  companyBreakdown,
+  windowMetrics,
+  DEFAULT_YEARS,
+  SUPPORTED_YEARS,
+} from './engine/screen.js';
+import { shareClassKey, cumulativeToAnnual, calmarRatio } from './engine/metrics.js';
 
 let cache = { version: null, funds: null, pools: new Map() };
 
@@ -10,10 +18,22 @@ export function invalidate() {
   cache = { version: null, funds: null, pools: new Map() };
 }
 
+function parseWin(raw) {
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw);
+    return o && typeof o === 'object' ? o : null;
+  } catch {
+    return null;
+  }
+}
+
 function loadFunds() {
   const v = dataVersion();
   if (cache.version === v && cache.funds) return cache.funds;
   const rows = db.prepare('SELECT * FROM funds').all();
+  // 多窗口指标是 JSON 字符串，解析一次挂在行上，后面筛选直接取，不必每层重复 parse
+  for (const r of rows) r.win = parseWin(r.win_json);
   cache = { version: v, funds: rows, pools: new Map() };
   return rows;
 }
@@ -49,10 +69,23 @@ export function poolUniverse(pool, funds) {
   return [...byKey.values()];
 }
 
+/** 口径缓存键：任何一个参数变了结果就不同，漏掉一个会串味 */
+function criteriaKey(poolId, c) {
+  return [
+    poolId,
+    c.years,
+    c.managerMinYears,
+    c.mddKeepRatio,
+    c.returnKeepRatio,
+    c.calmarKeepRatio,
+    c.purchaseMode,
+  ].join('|');
+}
+
 export function getPoolResult(poolId, rawCriteria) {
   const criteria = normalizeCriteria(rawCriteria);
   // 同一池子在不同口径下结果不同，缓存必须带上口径，否则拖一次滑块就串味
-  const cacheKey = `${poolId}|${criteria.managerMinYears}|${criteria.mddKeepRatio}|${criteria.returnKeepRatio}|${criteria.purchaseMode}`;
+  const cacheKey = criteriaKey(poolId, criteria);
   const v = dataVersion();
   const cached = cache.pools.get(cacheKey);
   if (cached && cached.version === v) return cached.value;
@@ -95,7 +128,7 @@ export function getPoolTrace(poolId, rawCriteria) {
   const criteria = normalizeCriteria(rawCriteria);
   const base = getPoolResult(poolId, criteria);
   if (!base) return null;
-  const cacheKey = `${poolId}|${criteria.managerMinYears}|${criteria.mddKeepRatio}|${criteria.returnKeepRatio}|${criteria.purchaseMode}`;
+  const cacheKey = criteriaKey(poolId, criteria);
   const entry = cache.pools.get(cacheKey);
   const stages = entry?.stages ?? [];
 
@@ -213,23 +246,36 @@ export function getMetaInfo() {
       minScaleYi: MIN_SCALE_YI,
       managerMinYears: 3,
       keepRatio: 0.5,
+      years: DEFAULT_YEARS,
+      supportedYears: SUPPORTED_YEARS,
       rankBasis: '池内排名',
-      returnField: '近3年累计涨幅折年化',
+      returnField: '近N年累计涨幅折年化',
       calmarFormula: '年化收益 ÷ |最大回撤|',
     },
   };
 }
 
-export function getFundDetail(code) {
+export function getFundDetail(code, rawCriteria = {}) {
   const row = db.prepare('SELECT * FROM funds WHERE code = ?').get(code);
   if (!row) return null;
+  // 详情页的收益/回撤/卡玛要跟页面上的业绩窗口一致，否则抽屉写「近3年」、
+  // 榜单写「近5年」，同一只基金出现两个数
+  const { years } = normalizeCriteria(rawCriteria);
+  const w = windowMetrics({ ...row, win: parseWin(row.win_json) }, years);
+  const fund = { ...row, windowYears: years };
+  if (w) {
+    fund.cum3y = w.cum;
+    fund.mdd3y = w.mdd;
+    fund.ann3y = cumulativeToAnnual(w.cum, years);
+    fund.calmar = calmarRatio(fund.ann3y, w.mdd);
+  }
   const pools = [];
   const members = db.prepare('SELECT pool_id FROM pool_members WHERE code = ?').all(code);
   const memberSet = new Set(members.map((m) => m.pool_id));
   for (const id of memberSet) {
-    const r = getPoolResult(id);
+    const r = getPoolResult(id, rawCriteria);
     const hit = r?.items.find((i) => i.code === code);
     if (hit) pools.push({ poolId: id, poolName: r.pool.name, rank: hit.rank, calmar: hit.calmar });
   }
-  return { fund: row, pools };
+  return { fund, pools };
 }

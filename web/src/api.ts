@@ -37,6 +37,8 @@ function criteriaParams(c?: Criteria): Record<string, string> {
     mgr: String(c.managerMinYears),
     mdd: String(Math.round(c.mddKeepRatio * 100)),
     ret: String(Math.round(c.returnKeepRatio * 100)),
+    cal: String(Math.round(c.calmarKeepRatio * 100)),
+    years: String(c.years),
     purchase: c.purchaseMode,
   };
 }
@@ -51,6 +53,6 @@ export const api = {
       mode: opts.mode ?? 'filter',
       ...criteriaParams(opts.criteria),
     }),
-  fund: (code: string) => get<FundDetail>(`/funds/${code}`),
+  fund: (code: string, criteria?: Criteria) => get<FundDetail>(`/funds/${code}`, criteriaParams(criteria)),
   trace: (id: string, criteria?: Criteria) => get<PoolTrace>(`/pools/${id}/trace`, criteriaParams(criteria)),
 };

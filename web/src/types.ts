@@ -23,7 +23,10 @@ export interface Criteria {
   managerMinYears: number;
   mddKeepRatio: number;
   returnKeepRatio: number;
+  calmarKeepRatio: number;
   purchaseMode: 'strict' | 'loose';
+  /** 业绩窗口年数（1–5），回撤/收益/卡玛都按这个窗口取值 */
+  years: number;
 }
 
 export interface MetaInfo {
@@ -58,6 +61,8 @@ export interface FundItem {
   indexCategory: string | null;
   indexTheme: string | null;
   trackingError: number | null;
+  /** 该行指标对应的业绩窗口年数 */
+  windowYears?: number;
   mddRankInPool: number | null;
   mddRankTotal: number | null;
   returnRankInPool: number | null;
@@ -91,6 +96,7 @@ export interface PoolView {
     managerUnknown?: number;
     passMdd: number;
     passReturn: number;
+    passCalmar: number;
     selected: number;
     criteria?: Criteria;
   };

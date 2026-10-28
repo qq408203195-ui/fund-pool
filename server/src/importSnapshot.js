@@ -24,7 +24,7 @@ const UPSERT = `
 INSERT INTO funds (
   code, name, company, type_l2, is_initial, purchase_status,
   manager_start, manager_tenure, manager_names, manager_count,
-  cum3y, ann3y, ann3y_wind, mdd3y, calmar, calmar_wind,
+  cum3y, ann3y, ann3y_wind, mdd3y, calmar, calmar_wind, win_json,
   scale, nav,
   track_index, track_index_code, index_category, index_theme, index_source, tracking_error,
   estab, source,
@@ -32,7 +32,7 @@ INSERT INTO funds (
 ) VALUES (
   $code, $name, $company, $type_l2, $is_initial, $purchase_status,
   $manager_start, $manager_tenure, $manager_names, $manager_count,
-  $cum3y, $ann3y, $ann3y_wind, $mdd3y, $calmar, $calmar_wind,
+  $cum3y, $ann3y, $ann3y_wind, $mdd3y, $calmar, $calmar_wind, $win_json,
   $scale, $nav,
   $track_index, $track_index_code, $index_category, $index_theme, $index_source, $tracking_error,
   $estab, $source,
@@ -54,6 +54,7 @@ ON CONFLICT(code) DO UPDATE SET
   mdd3y = excluded.mdd3y,
   calmar = excluded.calmar,
   calmar_wind = excluded.calmar_wind,
+  win_json = COALESCE(excluded.win_json, funds.win_json),
   scale = COALESCE(excluded.scale, funds.scale),
   nav = COALESCE(excluded.nav, funds.nav),
   track_index = COALESCE(excluded.track_index, funds.track_index),
@@ -143,6 +144,9 @@ function rowToRecord(row, cols, dataDate, raw_source) {
     mdd3y: round(mdd3y, 4),
     calmar: round(calmar, 4),
     calmar_wind: round(num(o.calmarWind), 4),
+    // 快照里的 wins 是多窗口指标的嵌套对象，SQLite 的 TEXT 列只收字符串，
+    // 直接塞对象会被 node:sqlite 拒绝（或被静默丢弃），必须先序列化
+    win_json: toJsonText(o.wins),
     scale: round(num(o.scale), 4),
     nav: round(num(o.nav), 4),
     track_index: o.idxName || null,
@@ -162,6 +166,17 @@ function num(v) {
   if (v == null || v === '') return null;
   const n = typeof v === 'number' ? v : Number(String(v).replace(/[%,]/g, ''));
   return Number.isFinite(n) ? n : null;
+}
+
+/** 对象/数组转成可入库的 JSON 文本；已经是字符串的原样保留 */
+function toJsonText(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return null;
+  }
 }
 
 export function importAll() {

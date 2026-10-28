@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS funds (
   mdd3y               REAL,
   calmar              REAL,
   calmar_wind         REAL,
+  /** 多窗口业绩快照：{"1":{"cum":..,"mdd":..}, ..., "5":{...}} */
+  win_json            TEXT,
 
   scale               REAL,
   nav                 REAL,
@@ -63,6 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_funds_calmar   ON funds(calmar DESC);
 for (const [col, decl] of [
   ['estab', 'TEXT'],
   ['source', 'TEXT'],
+  ['win_json', 'TEXT'],
 ]) {
   const cols = db.prepare('PRAGMA table_info(funds)').all().map((c) => c.name);
   if (!cols.includes(col)) db.exec(`ALTER TABLE funds ADD COLUMN ${col} ${decl}`);

@@ -13,10 +13,13 @@ export function createApiRouter() {
    */
   const criteriaOf = (req) => {
     const pct = (v) => (v == null || v === '' ? undefined : Number(v) / 100);
+    const n = (v) => (v == null || v === '' ? undefined : Number(v));
     return {
-      managerMinYears: req.query.mgr == null || req.query.mgr === '' ? undefined : Number(req.query.mgr),
+      managerMinYears: n(req.query.mgr),
       mddKeepRatio: pct(req.query.mdd),
       returnKeepRatio: pct(req.query.ret),
+      calmarKeepRatio: pct(req.query.cal),
+      years: n(req.query.years),
       purchaseMode: req.query.purchase === 'loose' ? 'loose' : req.query.purchase === 'strict' ? 'strict' : undefined,
     };
   };
@@ -62,7 +65,7 @@ export function createApiRouter() {
   });
 
   router.get('/funds/:code', (req, res) => {
-    const detail = getFundDetail(req.params.code);
+    const detail = getFundDetail(req.params.code, criteriaOf(req));
     if (!detail) return res.status(404).json({ error: '未找到该基金' });
     res.json(detail);
   });

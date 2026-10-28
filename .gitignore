@@ -19,6 +19,7 @@ __pycache__/
 .venv/
 
 # 截图与临时文件
+.shots/
 *.png
 !server/data/snapshot/**/*.png
 _tmp/

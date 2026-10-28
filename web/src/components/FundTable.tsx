@@ -6,7 +6,7 @@ type SortKey = 'rank' | 'ann3y' | 'mdd3y' | 'calmar' | 'mddPercentile' | 'return
 
 const COLS: { key: SortKey; label: string; align?: 'r'; hide?: string; title?: string }[] = [
   { key: 'rank', label: '#', hide: '' },
-  { key: 'ann3y', label: '年化收益', align: 'r', title: '近 3 年累计收益折算几何年化' },
+  { key: 'ann3y', label: '年化收益', align: 'r', title: '区间累计收益折算几何年化' },
   { key: 'mdd3y', label: '最大回撤', align: 'r' },
   { key: 'calmar', label: '卡玛', align: 'r', title: '年化收益 ÷ 最大回撤' },
   { key: 'mddPercentile', label: '回撤分位', align: 'r', hide: 'col-hide-md', title: '池内分位，越高代表回撤控制越好' },
@@ -14,6 +14,13 @@ const COLS: { key: SortKey; label: string; align?: 'r'; hide?: string; title?: s
   { key: 'scale', label: '规模', align: 'r', hide: 'col-hide-sm' },
   { key: 'managerTenure', label: '经理年限', align: 'r', hide: 'col-hide-md' },
 ];
+
+/** 列头随业绩窗口变化：窗口选 5 年却写着「近3年」是最容易让人误读的一处 */
+function labelWithWindow(key: SortKey, label: string, years: number): string {
+  if (key === 'ann3y') return `近${years}年年化`;
+  if (key === 'mdd3y') return `近${years}年回撤`;
+  return label;
+}
 
 interface Props {
   items: FundItem[];
@@ -23,6 +30,7 @@ interface Props {
 export default function FundTable({ items, onSelect }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [asc, setAsc] = useState(true);
+  const years = items[0]?.windowYears ?? 3;
 
   const sorted = useMemo(() => {
     const arr = [...items];
@@ -76,9 +84,9 @@ export default function FundTable({ items, onSelect }: Props) {
                   key={c.key}
                   className={`sortable ${c.align === 'r' ? 'r' : ''} ${c.hide ?? ''}`}
                   onClick={() => clickSort(c.key)}
-                  title={c.title}
+                  title={c.title ? `${c.title}（近 ${years} 年窗口）` : undefined}
                 >
-                  {c.label}
+                  {labelWithWindow(c.key, c.label, years)}
                   {sortKey === c.key && <span className="arrow">{asc ? '▲' : '▼'}</span>}
                 </th>
               ))}

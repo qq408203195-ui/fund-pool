@@ -1478,18 +1478,62 @@ table.trace-table {
   flex-wrap: wrap;
 }
 
-.criteria-row.secondary {
-  padding-top: 10px;
-  border-top: 1px dashed var(--line);
+.criteria-row.head {
+  align-items: center;
+  padding-bottom: 9px;
+  border-bottom: 1px dashed var(--line);
 }
 
-/* 五档窗口连排，156px 的默认宽度装不下，会顶到旁边的「入榜/重置」 */
-.criteria-item.window {
-  min-width: 330px;
+.criteria-hint {
+  font-size: 11.5px;
+  color: var(--ink-3);
 }
 
-.criteria-item.window .seg-btn {
-  padding: 4px 10px;
+.criteria-hint b {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+/* 每个滑块项自带窗口下拉，比默认 156px 需要更宽一点才不挤 */
+.criteria-item.slider {
+  min-width: 176px;
+}
+
+.label-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-2);
+}
+
+/* 业绩窗口下拉。用原生 select 保证键盘与移动端可用，只把外观压成小徽章 */
+.year-pick {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background-color: var(--surface);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'><path d='M0 0h8L4 5z' fill='%23888'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  padding: 0 14px 0 4px;
+  cursor: pointer;
+}
+
+.year-pick:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+/* 非默认窗口高亮，一眼能看出「这条不是 3 年」 */
+.year-pick.custom {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .criteria-lead {

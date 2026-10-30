@@ -21,17 +21,31 @@ export const MANAGER_MIN_YEARS = 3;
 export const KEEP_RATIO = 0.5;
 export const DEFAULT_YEARS = 3;
 
-/** 业绩窗口的可选值。快照里预算了这几档，超出范围的请求会被夹回来 */
-export const SUPPORTED_YEARS = [1, 2, 3, 4, 5];
+/**
+ * 业绩窗口的可选值。快照里预算了这几档，超出范围的请求会被夹回来。
+ *
+ * 池内样本要求成立满 5 年，所以 6 年以上的窗口只有更老的产品才有数据——
+ * 这不是缺陷，是真实约束：选了 7 年窗口，成立 5 年的基金就是没有 7 年指标可算，
+ * 按「指标缺失」处理，绝不退回短窗口充数。
+ */
+export const SUPPORTED_YEARS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-/** 默认口径 —— 前端未传参时按业务原始规则执行 */
+/**
+ * 默认口径 —— 前端未传参时按业务原始规则执行。
+ *
+ * 回撤、收益、卡玛三条各有一个独立的业绩窗口：用户可以「近 3 年回撤前 50% +
+ * 近 5 年收益前 30% + 近 7 年卡玛前 10%」。卡玛按自己的窗口单独计算
+ * （同窗口年化收益 ÷ 同窗口最大回撤），不混用另外两个窗口的数字。
+ */
 export const DEFAULT_CRITERIA = {
   managerMinYears: MANAGER_MIN_YEARS,
   mddKeepRatio: KEEP_RATIO,
   returnKeepRatio: KEEP_RATIO,
   calmarKeepRatio: 1, // 1 = 不过滤，卡玛只用于最终排序
   purchaseMode: 'strict',
-  years: DEFAULT_YEARS,
+  mddYears: DEFAULT_YEARS,
+  returnYears: DEFAULT_YEARS,
+  calmarYears: DEFAULT_YEARS,
 };
 
 /**
@@ -47,15 +61,23 @@ export function normalizeCriteria(raw = {}) {
     if (!Number.isFinite(n)) return def;
     return Math.min(hi, Math.max(lo, n));
   };
-  const years = Math.round(num(raw.years, DEFAULT_CRITERIA.years, 1, 5));
+  // 只允许预算过的整年窗口，否则取不到指标会把整池筛空。
+  // 旧链接只带一个 years 参数，三条一起继承它，保持兼容。
+  const legacy = raw.years;
+  const pickYears = (v, def) => {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n)) return def;
+    return SUPPORTED_YEARS.includes(n) ? n : def;
+  };
   return {
     managerMinYears: num(raw.managerMinYears, DEFAULT_CRITERIA.managerMinYears, 0, 20),
     mddKeepRatio: num(raw.mddKeepRatio, DEFAULT_CRITERIA.mddKeepRatio, 0.05, 1),
     returnKeepRatio: num(raw.returnKeepRatio, DEFAULT_CRITERIA.returnKeepRatio, 0.05, 1),
     calmarKeepRatio: num(raw.calmarKeepRatio, DEFAULT_CRITERIA.calmarKeepRatio, 0.05, 1),
     purchaseMode: raw.purchaseMode === 'loose' ? 'loose' : 'strict',
-    // 只允许预算过的整年窗口，否则取不到指标会把整池筛空
-    years: SUPPORTED_YEARS.includes(years) ? years : DEFAULT_CRITERIA.years,
+    mddYears: pickYears(raw.mddYears ?? legacy, DEFAULT_CRITERIA.mddYears),
+    returnYears: pickYears(raw.returnYears ?? legacy, DEFAULT_CRITERIA.returnYears),
+    calmarYears: pickYears(raw.calmarYears ?? legacy, DEFAULT_CRITERIA.calmarYears),
   };
 }
 
@@ -126,15 +148,23 @@ function isOpenForPurchase(status, loose = false) {
  * 逐层明细与最终榜单共用同一套字段名，避免两处口径漂移。
  *
  * cum3y / ann3y / mdd3y / calmar 这几个字段名沿用历史命名，实际含义是
- * 「当前业绩窗口（years）下的值」——窗口由用户在页面上调节。
+ * 「各自业绩窗口下的值」——三条筛选各有一个独立的窗口年数（criteria 里
+ * mddYears / returnYears / calmarYears）。所以同一行里，年化可能来自近 5 年、
+ * 回撤来自近 3 年、卡玛来自近 7 年，各自独立计算、互不混用。
  * 改字段名会牵动前端十几处引用，收益不抵风险，故在文档里说明。
  */
-function traceRow(f, years = DEFAULT_YEARS) {
-  const w = windowMetrics(f, years);
-  const cum = w ? w.cum : null;
-  const mdd = w ? w.mdd : null;
-  const ann = cumulativeToAnnual(cum, years);
-  const calmar = calmarRatio(ann, mdd);
+function traceRow(f, criteria) {
+  const c = criteria;
+  const wMdd = windowMetrics(f, c.mddYears);
+  const wRet = windowMetrics(f, c.returnYears);
+  const wCal = windowMetrics(f, c.calmarYears);
+  const cum = wRet ? wRet.cum : null;
+  const ann = wRet ? cumulativeToAnnual(wRet.cum, c.returnYears) : null;
+  const mdd = wMdd ? wMdd.mdd : null;
+  // 卡玛按自己的窗口算：同窗口的年化收益 ÷ 同窗口最大回撤。
+  // 不拿「收益窗口的收益 ÷ 回撤窗口的回撤」，那会得出一个不存在的期限组合。
+  const calAnn = wCal ? cumulativeToAnnual(wCal.cum, c.calmarYears) : null;
+  const calmar = wCal ? calmarRatio(calAnn, wCal.mdd) : null;
   return {
     code: f.code,
     name: f.name,
@@ -175,7 +205,8 @@ function makeStage({ key, label, desc, rows }) {
  */
 export function screenPool(pool, universe, rawOpts = {}) {
   const criteria = normalizeCriteria(rawOpts);
-  const { managerMinYears, mddKeepRatio, returnKeepRatio, calmarKeepRatio, years } = criteria;
+  const { managerMinYears, mddKeepRatio, returnKeepRatio, calmarKeepRatio, mddYears, returnYears, calmarYears } =
+    criteria;
   const loose = criteria.purchaseMode === 'loose';
   const stages = [];
 
@@ -195,7 +226,7 @@ export function screenPool(pool, universe, rawOpts = {}) {
   // 按池子定义的类型顺序分组，组内按规模降序，前端直接按此顺序分段渲染
   const typeOrder = new Map((pool?.types || []).map((t, i) => [t, i]));
   const universeRows = universe
-    .map((f) => ({ ...traceRow(f, years), ok: true, reason: null, layerRank: null, layerTotal: null }))
+    .map((f) => ({ ...traceRow(f, criteria), ok: true, reason: null, layerRank: null, layerTotal: null }))
     .sort((a, b) => {
       const ta = typeOrder.get(a.typeL2) ?? 999;
       const tb = typeOrder.get(b.typeL2) ?? 999;
@@ -215,7 +246,7 @@ export function screenPool(pool, universe, rawOpts = {}) {
   const purchaseRows = universe.map((f) => {
     const ok = isOpenForPurchase(f.purchase_status, loose);
     return {
-      ...traceRow(f, years),
+      ...traceRow(f, criteria),
       ok,
       reason: ok ? null : REJECT.NOT_OPEN,
       layerRank: null,
@@ -229,7 +260,7 @@ export function screenPool(pool, universe, rawOpts = {}) {
   stages.push(
     makeStage({
       key: 'passPurchase',
-      label: loose ? '可买入（放宽）' : '可买入',
+      label: loose ? '申购状态（放宽）' : '申购状态',
       desc: loose
         ? '放宽口径：除「暂停申购」「封闭」「终止」外全部保留，「暂停大额申购」「限大额」视为可小额买入。「场内交易」的 ETF / LOF 一并保留。'
         : '保留申购状态为「开放申购」的场外份额，以及「场内交易」的 ETF / LOF（这类产品买入走交易所撮合，不靠申购）。带暂停、限大额、限购、封闭、终止字样的一律剔除——金额受限的产品不构成可直接执行的推荐。',
@@ -247,7 +278,7 @@ export function screenPool(pool, universe, rawOpts = {}) {
     // managerMinYears = 0 表示用户关掉了这条筛选，全部放行
     const ok = missing ? true : managerMinYears <= 0 || tenure >= managerMinYears;
     return {
-      ...traceRow(f, years),
+      ...traceRow(f, criteria),
       ok,
       managerUnknown: missing,
       reason: ok ? null : managerShortReason(managerMinYears),
@@ -283,21 +314,27 @@ export function screenPool(pool, universe, rawOpts = {}) {
   );
 
   // ── 窗口指标预处理 ──────────────────────────────────
-  // 回撤、收益、卡玛三层都按用户选的「近 N 年」取值，这里统一算一次，
-  // 避免每层各自重复解析 win_json。
-  const wm = new Map(); // 原始基金对象 -> {cum, mdd, ann, calmar} | null
+  // 三条筛选各有自己的窗口年数，这里一次性把三个窗口的指标都取出来，
+  // 避免每层各自重复解析 win_json。任一窗口取不到就留 null，
+  // 由对应那一层按「指标缺失」处理。
+  const wm = new Map(); // 原始基金对象 -> {cum, mdd, ann, calmar}
   for (const f of afterManager) {
-    const w = windowMetrics(f, years);
-    if (!w) {
-      wm.set(f, null);
-      continue;
-    }
-    const ann = cumulativeToAnnual(w.cum, years);
-    wm.set(f, { cum: w.cum, mdd: w.mdd, ann, calmar: calmarRatio(ann, w.mdd) });
+    const wMdd = windowMetrics(f, mddYears);
+    const wRet = windowMetrics(f, returnYears);
+    const wCal = windowMetrics(f, calmarYears);
+    wm.set(f, {
+      cum: wRet ? wRet.cum : null,
+      ann: wRet ? cumulativeToAnnual(wRet.cum, returnYears) : null,
+      mdd: wMdd ? wMdd.mdd : null,
+      calmar: wCal ? calmarRatio(cumulativeToAnnual(wCal.cum, calmarYears), wCal.mdd) : null,
+      // 卡玛窗口自己的回撤，用于「分母趋零则比值无意义」的判定。
+      // 不能拿回撤窗口的 mdd 来判——三个窗口可能不是同一个年数。
+      calmarMdd: wCal ? wCal.mdd : null,
+    });
   }
   const wn = (f) => wm.get(f);
 
-  // ── 步骤 3：最大回撤分位 ────────────────────────────
+  // ── 步骤 3：最大回撤分位（窗口 = mddYears）──────────
   const withMdd = afterManager.filter((f) => wn(f)?.mdd != null);
   // mdd 为负值，desc = 越接近 0 越优
   const mddRank = rankBy(withMdd, (f) => wn(f).mdd, 'desc');
@@ -309,9 +346,13 @@ export function screenPool(pool, universe, rawOpts = {}) {
     const ok = r != null && r <= mddKeep;
     if (ok) afterMdd.push(f);
     return {
-      ...traceRow(f, years),
+      ...traceRow(f, criteria),
       ok,
-      reason: ok ? null : r == null ? REJECT.MISSING_DATA : `近${years}年最大回撤排名池内后${100 - mddKeepPct}%`,
+      reason: ok
+        ? null
+        : r == null
+          ? `${REJECT.MISSING_DATA}（无近${mddYears}年回撤）`
+          : `近${mddYears}年最大回撤排名池内后${100 - mddKeepPct}%`,
       layerRank: r,
       layerTotal: mddRank.total,
     };
@@ -321,16 +362,17 @@ export function screenPool(pool, universe, rawOpts = {}) {
   stages.push(
     makeStage({
       key: 'passMdd',
-      label: mddKeepRatio >= 1 ? '回撤不限' : `近${years}年回撤前 ${mddKeepPct}%`,
+      label: mddKeepRatio >= 1 ? `回撤不限（近${mddYears}年）` : `近${mddYears}年回撤前 ${mddKeepPct}%`,
       desc:
         mddKeepRatio >= 1
           ? '回撤这道筛选已关闭，本层全部放行（回撤值仍会参与卡玛比率计算）。'
-          : `按近 ${years} 年最大回撤排序（越接近 0 越优），保留排名前 ${mddKeep} / ${mddRank.total} 只，即剔除回撤最大的后 ${100 - mddKeepPct}%。`,
+          : `按近 ${mddYears} 年最大回撤排序（越接近 0 越优），保留排名前 ${mddKeep} / ${mddRank.total} 只，即剔除回撤最大的后 ${100 - mddKeepPct}%。` +
+            `若某只产品成立不满 ${mddYears} 年、取不到该窗口的回撤，按数据缺失剔除——不退回短窗口充数。`,
       rows: mddRows,
     })
   );
 
-  // ── 步骤 4：年化收益分位 ────────────────────────────
+  // ── 步骤 4：年化收益分位（窗口 = returnYears）───────
   const withReturn = afterMdd.filter((f) => wn(f)?.ann != null);
   const retRank = rankBy(withReturn, (f) => wn(f).ann, 'desc');
   const retKeepPct = Math.round(returnKeepRatio * 100);
@@ -341,9 +383,13 @@ export function screenPool(pool, universe, rawOpts = {}) {
     const ok = r != null && r <= retKeep;
     if (ok) afterReturn.push(f);
     return {
-      ...traceRow(f, years),
+      ...traceRow(f, criteria),
       ok,
-      reason: ok ? null : r == null ? REJECT.MISSING_DATA : `近${years}年年化收益排名池内后${100 - retKeepPct}%`,
+      reason: ok
+        ? null
+        : r == null
+          ? `${REJECT.MISSING_DATA}（无近${returnYears}年收益）`
+          : `近${returnYears}年年化收益排名池内后${100 - retKeepPct}%`,
       layerRank: r,
       layerTotal: retRank.total,
     };
@@ -353,18 +399,19 @@ export function screenPool(pool, universe, rawOpts = {}) {
   stages.push(
     makeStage({
       key: 'passReturn',
-      label: returnKeepRatio >= 1 ? '收益不限' : `近${years}年收益前 ${retKeepPct}%`,
+      label: returnKeepRatio >= 1 ? `收益不限（近${returnYears}年）` : `近${returnYears}年收益前 ${retKeepPct}%`,
       desc:
         returnKeepRatio >= 1
           ? '收益这道筛选已关闭，本层全部放行（收益值仍会参与卡玛比率计算）。'
-          : `按近 ${years} 年几何年化收益排序，保留排名前 ${retKeep} / ${retRank.total} 只，即剔除收益最低的后 ${100 - retKeepPct}%。`,
+          : `按近 ${returnYears} 年几何年化收益排序，保留排名前 ${retKeep} / ${retRank.total} 只，即剔除收益最低的后 ${100 - retKeepPct}%。`,
       rows: returnRows,
     })
   );
 
-  // ── 步骤 5：卡玛比率分位 ────────────────────────────
+  // ── 步骤 5：卡玛比率分位（窗口 = calmarYears）───────
   // 卡玛 = 年化收益 ÷ |最大回撤|，本身已经综合了收益与风险。
   // 单列一层让用户可以「既要收益靠前、也要风险调整后效率靠前」。
+  // 注意卡玛用的是它自己的窗口，不是前两层的窗口——三个窗口互不混用。
   const withCalmar = afterReturn.filter((f) => wn(f)?.calmar != null);
   const calRank = rankBy(withCalmar, (f) => wn(f).calmar, 'desc');
   const calKeepPct = Math.round(calmarKeepRatio * 100);
@@ -375,9 +422,13 @@ export function screenPool(pool, universe, rawOpts = {}) {
     const ok = r != null && r <= calKeep;
     if (ok) afterCalmar.push(f);
     return {
-      ...traceRow(f, years),
+      ...traceRow(f, criteria),
       ok,
-      reason: ok ? null : r == null ? REJECT.MISSING_DATA : `近${years}年卡玛比率排名池内后${100 - calKeepPct}%`,
+      reason: ok
+        ? null
+        : r == null
+          ? `${REJECT.MISSING_DATA}（无近${calmarYears}年卡玛）`
+          : `近${calmarYears}年卡玛比率排名池内后${100 - calKeepPct}%`,
       layerRank: r,
       layerTotal: calRank.total,
     };
@@ -387,19 +438,21 @@ export function screenPool(pool, universe, rawOpts = {}) {
   stages.push(
     makeStage({
       key: 'passCalmar',
-      label: calmarKeepRatio >= 1 ? '卡玛不限' : `近${years}年卡玛前 ${calKeepPct}%`,
+      label: calmarKeepRatio >= 1 ? `卡玛不限（近${calmarYears}年）` : `近${calmarYears}年卡玛前 ${calKeepPct}%`,
       desc:
         calmarKeepRatio >= 1
-          ? '卡玛这道筛选已关闭，本层全部放行（卡玛仍作为最终排序键）。'
-          : `按近 ${years} 年卡玛比率（年化收益 ÷ |最大回撤|）排序，保留排名前 ${calKeep} / ${calRank.total} 只，即剔除风险调整后收益最差的后 ${100 - calKeepPct}%。`,
+          ? `卡玛这道筛选已关闭，本层全部放行（卡玛仍作为最终排序键，按近 ${calmarYears} 年窗口计算）。`
+          : `按近 ${calmarYears} 年卡玛比率（该窗口的年化收益 ÷ 该窗口 |最大回撤|）排序，保留排名前 ${calKeep} / ${calRank.total} 只，即剔除风险调整后收益最差的后 ${100 - calKeepPct}%。`,
       rows: calmarRows,
     })
   );
 
   // ── 步骤 6：卡玛比率降序 ────────────────────────────
+  // 分母（卡玛窗口的最大回撤）不足 0.5 个百分点时，卡玛会被无限放大、失去比较意义，
+  // 这类产品不进榜。用的是卡玛窗口自己的回撤，不是回撤层那个窗口。
   const rankable = afterCalmar.filter((f) => {
     const m = wn(f);
-    return m && m.calmar != null && Number.isFinite(m.calmar) && Math.abs(m.mdd) > 0.5;
+    return m && m.calmar != null && Number.isFinite(m.calmar) && Math.abs(m.calmarMdd) > 0.5;
   });
   rankable.sort((a, b) => wn(b).calmar - wn(a).calmar);
 
@@ -426,7 +479,10 @@ export function screenPool(pool, universe, rawOpts = {}) {
       indexCategory: f.index_category,
       indexTheme: f.index_theme,
       trackingError: f.tracking_error,
-      windowYears: years,
+      mddYears,
+      returnYears,
+      calmarYears,
+      windowYears: calmarYears,
       mddRankInPool: mddRank.rank.get(f) ?? null,
       mddRankTotal: mddRank.total,
       returnRankInPool: retRank.rank.get(f) ?? null,
@@ -449,7 +505,7 @@ export function screenPool(pool, universe, rawOpts = {}) {
   // 入榜层：把最终排名作为 layerRank，前端可直接复用同一张表
   const rankMap = new Map(items.map((i) => [i.code, i.rank]));
   const selectedRows = afterCalmar
-    .map((f) => traceRow(f, years))
+    .map((f) => traceRow(f, criteria))
     .filter((r) => rankMap.has(r.code))
     .sort((a, b) => rankMap.get(a.code) - rankMap.get(b.code))
     .map((r) => ({
@@ -463,7 +519,7 @@ export function screenPool(pool, universe, rawOpts = {}) {
     makeStage({
       key: 'selected',
       label: '入榜',
-      desc: `通过全部前置条件的基金，按近 ${years} 年卡玛比率（年化收益 ÷ |最大回撤|）降序排列。`,
+      desc: `通过全部前置条件的基金，按近 ${calmarYears} 年卡玛比率（该窗口年化收益 ÷ 该窗口 |最大回撤|）降序排列。`,
       rows: selectedRows,
     })
   );

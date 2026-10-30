@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { FundItem } from '../types';
+import type { Criteria, FundItem } from '../types';
 import { fmtPct, fmtNum, fmtScale, fmtYears, fmtPercentile, pctWidth, signClass } from '../utils/format';
 
 type SortKey = 'rank' | 'ann3y' | 'mdd3y' | 'calmar' | 'mddPercentile' | 'returnPercentile' | 'scale' | 'managerTenure';
@@ -15,22 +15,28 @@ const COLS: { key: SortKey; label: string; align?: 'r'; hide?: string; title?: s
   { key: 'managerTenure', label: '经理年限', align: 'r', hide: 'col-hide-md' },
 ];
 
-/** 列头随业绩窗口变化：窗口选 5 年却写着「近3年」是最容易让人误读的一处 */
-function labelWithWindow(key: SortKey, label: string, years: number): string {
-  if (key === 'ann3y') return `近${years}年年化`;
-  if (key === 'mdd3y') return `近${years}年回撤`;
+/**
+ * 三个指标各有自己的业绩窗口，列头必须分别标年数。
+ * 统一写「近N年」会掩盖「回撤看 3 年、收益看 5 年、卡玛看 7 年」这件事，
+ * 而用户恰恰是按这个设定在筛。
+ */
+function labelWithWindow(key: SortKey, label: string, y: { mdd: number; ret: number; cal: number }): string {
+  if (key === 'ann3y') return `近${y.ret}年年化`;
+  if (key === 'mdd3y') return `近${y.mdd}年回撤`;
+  if (key === 'calmar') return `卡玛·${y.cal}年`;
   return label;
 }
 
 interface Props {
   items: FundItem[];
+  criteria: Criteria;
   onSelect: (code: string) => void;
 }
 
-export default function FundTable({ items, onSelect }: Props) {
+export default function FundTable({ items, criteria, onSelect }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [asc, setAsc] = useState(true);
-  const years = items[0]?.windowYears ?? 3;
+  const yrs = { mdd: criteria.mddYears, ret: criteria.returnYears, cal: criteria.calmarYears };
 
   const sorted = useMemo(() => {
     const arr = [...items];
@@ -84,9 +90,9 @@ export default function FundTable({ items, onSelect }: Props) {
                   key={c.key}
                   className={`sortable ${c.align === 'r' ? 'r' : ''} ${c.hide ?? ''}`}
                   onClick={() => clickSort(c.key)}
-                  title={c.title ? `${c.title}（近 ${years} 年窗口）` : undefined}
+                  title={c.title ? `${c.title}（${c.key === 'calmar' ? `近 ${yrs.cal} 年` : c.key === 'mdd3y' ? `近 ${yrs.mdd} 年` : `近 ${yrs.ret} 年`}窗口）` : undefined}
                 >
-                  {labelWithWindow(c.key, c.label, years)}
+                  {labelWithWindow(c.key, c.label, yrs)}
                   {sortKey === c.key && <span className="arrow">{asc ? '▲' : '▼'}</span>}
                 </th>
               ))}

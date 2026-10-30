@@ -73,7 +73,9 @@ export function poolUniverse(pool, funds) {
 function criteriaKey(poolId, c) {
   return [
     poolId,
-    c.years,
+    c.mddYears,
+    c.returnYears,
+    c.calmarYears,
     c.managerMinYears,
     c.mddKeepRatio,
     c.returnKeepRatio,
@@ -246,7 +248,7 @@ export function getMetaInfo() {
       minScaleYi: MIN_SCALE_YI,
       managerMinYears: 3,
       keepRatio: 0.5,
-      years: DEFAULT_YEARS,
+      defaultYears: DEFAULT_YEARS,
       supportedYears: SUPPORTED_YEARS,
       rankBasis: '池内排名',
       returnField: '近N年累计涨幅折年化',
@@ -258,17 +260,26 @@ export function getMetaInfo() {
 export function getFundDetail(code, rawCriteria = {}) {
   const row = db.prepare('SELECT * FROM funds WHERE code = ?').get(code);
   if (!row) return null;
-  // 详情页的收益/回撤/卡玛要跟页面上的业绩窗口一致，否则抽屉写「近3年」、
+  // 详情页的三个指标各按页面上的对应窗口取值，否则抽屉写「近3年」、
   // 榜单写「近5年」，同一只基金出现两个数
-  const { years } = normalizeCriteria(rawCriteria);
-  const w = windowMetrics({ ...row, win: parseWin(row.win_json) }, years);
-  const fund = { ...row, windowYears: years };
-  if (w) {
-    fund.cum3y = w.cum;
-    fund.mdd3y = w.mdd;
-    fund.ann3y = cumulativeToAnnual(w.cum, years);
-    fund.calmar = calmarRatio(fund.ann3y, w.mdd);
+  const c = normalizeCriteria(rawCriteria);
+  const rowWithWin = { ...row, win: parseWin(row.win_json) };
+  const wMdd = windowMetrics(rowWithWin, c.mddYears);
+  const wRet = windowMetrics(rowWithWin, c.returnYears);
+  const wCal = windowMetrics(rowWithWin, c.calmarYears);
+  const fund = {
+    ...row,
+    windowYears: c.calmarYears,
+    mddYears: c.mddYears,
+    returnYears: c.returnYears,
+    calmarYears: c.calmarYears,
+  };
+  if (wRet) {
+    fund.cum3y = wRet.cum;
+    fund.ann3y = cumulativeToAnnual(wRet.cum, c.returnYears);
   }
+  if (wMdd) fund.mdd3y = wMdd.mdd;
+  if (wCal) fund.calmar = calmarRatio(cumulativeToAnnual(wCal.cum, c.calmarYears), wCal.mdd);
   const pools = [];
   const members = db.prepare('SELECT pool_id FROM pool_members WHERE code = ?').all(code);
   const memberSet = new Set(members.map((m) => m.pool_id));

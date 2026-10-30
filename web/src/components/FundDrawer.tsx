@@ -13,7 +13,7 @@ interface Props {
 export default function FundDrawer({ code, criteria, onClose, onJumpPool }: Props) {
   const [data, setData] = useState<FundDetail | null>(null);
   const [err, setErr] = useState('');
-  const years = criteria.years;
+  const { mddYears, returnYears, calmarYears } = criteria;
 
   useEffect(() => {
     let alive = true;
@@ -73,19 +73,19 @@ export default function FundDrawer({ code, criteria, onClose, onJumpPool }: Prop
             <div className="drawer-body">
               <div className="metric-grid">
                 <div className="metric-box">
-                  <div className="metric-label">近 {years} 年年化收益</div>
+                  <div className="metric-label">近 {returnYears} 年年化收益</div>
                   <div className={`metric-value ${signClass(data.fund.ann3y)}`}>
                     {fmtPct(data.fund.ann3y)}
                   </div>
                   <div className="metric-note">累计 {fmtPct(data.fund.cum3y)}</div>
                 </div>
                 <div className="metric-box">
-                  <div className="metric-label">近 {years} 年最大回撤</div>
+                  <div className="metric-label">近 {mddYears} 年最大回撤</div>
                   <div className="metric-value">{fmtPct(data.fund.mdd3y)}</div>
                   <div className="metric-note">区间内峰值到谷底</div>
                 </div>
                 <div className="metric-box">
-                  <div className="metric-label">卡玛比率</div>
+                  <div className="metric-label">卡玛比率 · 近 {calmarYears} 年</div>
                   <div className="metric-value">{fmtNum(data.fund.calmar, 3)}</div>
                   <div className="metric-note">Wind 原始值 {fmtNum(data.fund.calmar_wind, 3)}</div>
                 </div>
@@ -158,11 +158,13 @@ export default function FundDrawer({ code, criteria, onClose, onJumpPool }: Prop
               <div className="section-label">口径说明</div>
               <div className="kv">
                 <span className="kv-k">业绩窗口</span>
-                <span className="kv-v">近 {years} 年（跟随页面筛选口径）</span>
+                <span className="kv-v">
+                  收益 {returnYears} 年 · 回撤 {mddYears} 年 · 卡玛 {calmarYears} 年（跟随页面筛选口径）
+                </span>
               </div>
               <div className="kv">
                 <span className="kv-k">年化收益</span>
-                <span className="kv-v">近 {years} 年累计涨幅折几何年化</span>
+                <span className="kv-v">近 {returnYears} 年累计涨幅折几何年化</span>
               </div>
               <div className="kv">
                 <span className="kv-k">卡玛比率</span>

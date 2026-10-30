@@ -31,3 +31,6 @@ _tmp/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 快照备份（体积大，非数据源）
+server/data/*.bak.json

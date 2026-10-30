@@ -9,6 +9,8 @@ export function createApiRouter() {
   /**
    * 从 query 解析用户可调节的筛选口径。
    * 前端传百分比（mdd=50 表示保留回撤最好的前 50%），后端按比例使用。
+   * 业绩窗口三条各自独立：mddYears / returnYears / calmarYears；
+   * 老的 years 参数仍接收，作为三者的共同回退值。
    * 未传的项返回 undefined，由 normalizeCriteria 回落到默认值。
    */
   const criteriaOf = (req) => {
@@ -20,6 +22,9 @@ export function createApiRouter() {
       returnKeepRatio: pct(req.query.ret),
       calmarKeepRatio: pct(req.query.cal),
       years: n(req.query.years),
+      mddYears: n(req.query.mddYears),
+      returnYears: n(req.query.returnYears),
+      calmarYears: n(req.query.calmarYears),
       purchaseMode: req.query.purchase === 'loose' ? 'loose' : req.query.purchase === 'strict' ? 'strict' : undefined,
     };
   };

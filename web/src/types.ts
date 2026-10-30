@@ -13,6 +13,10 @@ export interface Caliber {
   minScaleYi: number;
   managerMinYears: number;
   keepRatio: number;
+  /** 默认业绩窗口年数 */
+  defaultYears?: number;
+  /** 快照里预算了哪些窗口；前端据此渲染年数下拉 */
+  supportedYears?: number[];
   rankBasis: string;
   returnField: string;
   calmarFormula: string;
@@ -25,8 +29,10 @@ export interface Criteria {
   returnKeepRatio: number;
   calmarKeepRatio: number;
   purchaseMode: 'strict' | 'loose';
-  /** 业绩窗口年数（1–5），回撤/收益/卡玛都按这个窗口取值 */
-  years: number;
+  /** 回撤、收益、卡玛三条各自的业绩窗口年数，互相独立 */
+  mddYears: number;
+  returnYears: number;
+  calmarYears: number;
 }
 
 export interface MetaInfo {
@@ -61,7 +67,10 @@ export interface FundItem {
   indexCategory: string | null;
   indexTheme: string | null;
   trackingError: number | null;
-  /** 该行指标对应的业绩窗口年数 */
+  /** 该行各指标对应的业绩窗口年数 */
+  mddYears?: number;
+  returnYears?: number;
+  calmarYears?: number;
   windowYears?: number;
   mddRankInPool: number | null;
   mddRankTotal: number | null;

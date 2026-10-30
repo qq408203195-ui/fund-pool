@@ -28,8 +28,9 @@ export type PoolQuery = {
 
 /**
  * 口径参数序列化。
- * 回撤/收益在前端是百分比（50 表示前 50%），后端按比例接收，这里除 100。
+ * 回撤/收益/卡玛在前端是百分比（50 表示前 50%），后端按比例接收，这里除 100。
  * 经理年限关掉时传 0，后端识别为「不限」。
+ * 三条业绩窗口各自独立传，后端不共用。
  */
 function criteriaParams(c?: Criteria): Record<string, string> {
   if (!c) return {};
@@ -38,7 +39,9 @@ function criteriaParams(c?: Criteria): Record<string, string> {
     mdd: String(Math.round(c.mddKeepRatio * 100)),
     ret: String(Math.round(c.returnKeepRatio * 100)),
     cal: String(Math.round(c.calmarKeepRatio * 100)),
-    years: String(c.years),
+    mddYears: String(c.mddYears),
+    returnYears: String(c.returnYears),
+    calmarYears: String(c.calmarYears),
     purchase: c.purchaseMode,
   };
 }

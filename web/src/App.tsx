@@ -119,23 +119,25 @@ export default function App() {
     [meta]
   );
 
-  // 管线说明跟着用户的滑块走，避免页面写着「经理满 3 年」而实际在按 5 年筛
+  // 管线说明跟着用户的滑块走，避免页面写着「经理满 3 年」而实际在按 5 年筛。
+  // 三条业绩窗口各自独立，说明里必须分别写出来，不能合并成一个「近 N 年」。
   const pipelineText = useMemo(() => {
-    const y = criteria.years;
+    const my = criteria.mddYears;
+    const ry = criteria.returnYears;
+    const cy = criteria.calmarYears;
     const steps = [
-      `业绩窗口近 ${y} 年`,
-      criteria.purchaseMode === 'strict' ? '可买入（开放申购 / 场内交易）' : '可买入（放宽：含限大额、暂停大额申购）',
+      criteria.purchaseMode === 'strict' ? '申购状态：仅开放申购 / 场内交易' : '申购状态：放宽，含限大额',
       criteria.managerMinYears <= 0 ? '经理年限不限' : `经理满 ${criteria.managerMinYears} 年`,
       criteria.mddKeepRatio >= 1
         ? '回撤不限'
-        : `剔除近 ${y} 年最大回撤排名池内后 ${Math.round((1 - criteria.mddKeepRatio) * 100)}%`,
+        : `剔除近 ${my} 年最大回撤排名池内后 ${Math.round((1 - criteria.mddKeepRatio) * 100)}%`,
       criteria.returnKeepRatio >= 1
         ? '收益不限'
-        : `剔除近 ${y} 年年化收益排名池内后 ${Math.round((1 - criteria.returnKeepRatio) * 100)}%`,
+        : `剔除近 ${ry} 年年化收益排名池内后 ${Math.round((1 - criteria.returnKeepRatio) * 100)}%`,
       criteria.calmarKeepRatio >= 1
         ? '卡玛不限'
-        : `剔除近 ${y} 年卡玛比率排名池内后 ${Math.round((1 - criteria.calmarKeepRatio) * 100)}%`,
-      `按近 ${y} 年卡玛比率降序`,
+        : `剔除近 ${cy} 年卡玛比率排名池内后 ${Math.round((1 - criteria.calmarKeepRatio) * 100)}%`,
+      `按近 ${cy} 年卡玛比率降序`,
     ];
     return steps.join(' → ') + '。';
   }, [criteria]);
@@ -179,6 +181,17 @@ export default function App() {
                 </div>
               </div>
 
+              {/* 先给口径调节器，再给漏斗：读者先设定规则、再看每一步的结果，
+                  顺序反了会先看到一堆数字却不知道它们在什么口径下算出来的 */}
+              <FilterControls
+                value={criteria}
+                onChange={setCriteria}
+                selected={view.stats.selected}
+                universe={view.stats.universe}
+                supportedYears={meta?.caliber.supportedYears}
+                disabled={loading}
+              />
+
               <Funnel
                 stats={view.stats}
                 active={activeStage}
@@ -187,14 +200,6 @@ export default function App() {
                   setActiveStage(k);
                   setShowTrace(true);
                 }}
-              />
-
-              <FilterControls
-                value={criteria}
-                onChange={setCriteria}
-                selected={view.stats.selected}
-                universe={view.stats.universe}
-                disabled={loading}
               />
 
               {/* 池子被筛空时，原因必须顶在最前面。否则用户要先滚过几十行逐层明细
@@ -218,9 +223,10 @@ export default function App() {
                   成立满 {meta?.caliber.minTrackYears ?? 5} 年、最新规模 ≥ {meta?.caliber.minScaleYi ?? 2} 亿元（剔除迷你基金）。
                   <br />
                   <b>筛选管线</b>：{pipelineText}
-                  「同类」口径为<b>池内排名</b>，不是 Wind 二级分类同类。年化收益由近 {criteria.years} 年累计涨幅折算几何年化，卡玛比率 = 年化收益 ÷ |最大回撤|。
+                  「同类」口径为<b>池内排名</b>，不是 Wind 二级分类同类。年化收益由对应窗口的累计涨幅折算几何年化；
+                  卡玛比率按它自己那个窗口单独计算（该窗口年化收益 ÷ 该窗口 |最大回撤|），不混用另外两条窗口的数字。
                   <br />
-                  <b>收益口径</b>：近 {criteria.years} 年涨幅与最大回撤均由<b>复权净值</b>逐日重算（分红按再投资处理）。
+                  <b>收益口径</b>：各窗口的区间涨幅与最大回撤均由<b>复权净值</b>逐日重算（分红按再投资处理）。
                   抽样与 Wind 复权净值增长率对账：最大回撤误差 ≤ 0.03 个百分点，区间收益相对误差 &lt; 2%
                   （残差来自日增长率保留两位小数后的累乘）。
                   {(view.stats.managerUnknown ?? 0) > 0 && (
@@ -326,7 +332,7 @@ export default function App() {
                   </div>
                 </div>
               ) : view.items.length === 0 ? null : (
-                <FundTable items={view.items} onSelect={setDrawerCode} />
+                <FundTable items={view.items} criteria={appliedCriteria} onSelect={setDrawerCode} />
               )}
 
               {view.rejects.length > 0 && (

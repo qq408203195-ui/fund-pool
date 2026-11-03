@@ -19,10 +19,16 @@ export default function StageTrace({
   trace,
   stageKey,
   onSelectFund,
+  q = '',
+  companies = [],
 }: {
   trace: PoolTrace;
   stageKey: string;
   onSelectFund: (code: string) => void;
+  /** 与分布图共用的关键词过滤，避免「搜了名字散点变少、明细表却不动」 */
+  q?: string;
+  /** 与分布图共用的公司过滤 */
+  companies?: string[];
 }) {
   const stage = trace.stages.find((s) => s.key === stageKey) ?? trace.stages[0];
   // 三个指标各有自己的窗口年数，列头分别标注，避免出现
@@ -87,6 +93,21 @@ export default function StageTrace({
     if (typeFilter !== '全部') out = out.filter((r) => String(r[groupField] || '未分类') === typeFilter);
     if (!isUniverse && resultFilter === 'pass') out = out.filter((r) => r.ok);
     if (!isUniverse && resultFilter === 'drop') out = out.filter((r) => !r.ok);
+    // 顶部搜索与公司筛选同样作用于明细，否则两处数字对不上
+    const kw = q.trim().toLowerCase();
+    if (kw) {
+      out = out.filter((r) =>
+        `${r.name} ${r.code} ${r.company ?? ''} ${r.trackIndex ?? ''} ${r.indexTheme ?? ''} ${
+          r.managerNames ?? ''
+        }`
+          .toLowerCase()
+          .includes(kw)
+      );
+    }
+    if (companies.length) {
+      const set = new Set(companies);
+      out = out.filter((r) => set.has(r.company));
+    }
     if (sortKey) {
       const arr = [...out];
       arr.sort((a, b) => {
@@ -100,7 +121,7 @@ export default function StageTrace({
       return arr;
     }
     return out;
-  }, [stage, typeFilter, resultFilter, isUniverse, groupField, sortKey, asc]);
+  }, [stage, typeFilter, resultFilter, isUniverse, groupField, sortKey, asc, q, companies]);
 
   // 第一层在「全部分组」下按分组维度分段，段序即后端排好的顺序；
   // 一旦用户点了排序，就平铺展示——跨组比较才有意义，组内各排各的会让人读不明白
@@ -173,6 +194,13 @@ export default function StageTrace({
             <Chip active onClick={() => setSortKey(null)}>
               已按{sortLabel(sortKey)}排序 · 点此还原
             </Chip>
+          </div>
+        )}
+        {(q.trim() || companies.length > 0) && (
+          <div className="trace-chips">
+            <span className="trace-chip active" title="搜索与公司筛选同时作用于分布图和本表">
+              已按上方条件过滤 · 显示 {rows.length} / {stage.rows.length} 只
+            </span>
           </div>
         )}
       </div>

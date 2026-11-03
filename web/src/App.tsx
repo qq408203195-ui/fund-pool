@@ -5,7 +5,6 @@ import Sidebar from './components/Sidebar';
 import Funnel, { type StageKey } from './components/Funnel';
 import StageTrace from './components/StageTrace';
 import CompanyFilter from './components/CompanyFilter';
-import FundTable from './components/FundTable';
 import Scatter from './components/Scatter';
 import FundDrawer from './components/FundDrawer';
 import EmptyState from './components/EmptyState';
@@ -171,8 +170,10 @@ export default function App() {
                     <span className="chip">
                       池内样本 <b>{view.stats.universe}</b>
                     </span>
+                    {/* 入榜取管线结果，不取当前视图：搜索/公司筛选只是「看哪几只」，
+                        不该把入榜总数改小，否则会和漏斗里的数字打架 */}
                     <span className="chip">
-                      入榜 <b>{view.items.length}</b>
+                      入榜 <b>{view.stats.selected}</b>
                     </span>
                     <span className="chip">
                       池内公司 <b>{view.companies.length}</b>
@@ -239,23 +240,8 @@ export default function App() {
                 </span>
               </div>
 
-              <div className="trace-section">
-                <div className="trace-bar">
-                  <span className="trace-bar-title">筛选过程逐层追溯</span>
-                  <span className="card-hint">点上方漏斗任意一层，看该层完整名单</span>
-                  <div className="spacer" />
-                  <button className="btn ghost sm" onClick={() => setShowTrace((v) => !v)}>
-                    {showTrace ? '收起明细' : '展开明细'}
-                  </button>
-                </div>
-                {showTrace &&
-                  (trace ? (
-                    <StageTrace trace={trace} stageKey={activeStage} onSelectFund={setDrawerCode} />
-                  ) : (
-                    <div className="trace-empty">{traceErr ? `逐层明细加载失败：${traceErr}` : '逐层明细加载中…'}</div>
-                  ))}
-              </div>
-
+              {/* 分布图提到逐层明细之前：先看整体形状与离群点，再逐层下钻看谁被剔。
+                  搜索与公司筛选同时作用于分布图和明细表，两处口径保持一致。 */}
               <div className="toolbar">
                 <div className="search-box">
                   <span className="search-icon">
@@ -324,16 +310,30 @@ export default function App() {
                 <Scatter items={view.items} onSelect={setDrawerCode} />
               )}
 
-              {loading && !view ? (
-                <div className="loading">
-                  <div>
-                    <div className="spinner" style={{ margin: '0 auto 10px' }} />
-                    加载中
-                  </div>
+              {/* 逐层明细既是「筛选过程」也是最终产品列表：第 7 层就是入榜名单，
+                  再单独列一张相同的表属于重复，已移除。 */}
+              <div className="trace-section">
+                <div className="trace-bar">
+                  <span className="trace-bar-title">筛选过程逐层追溯</span>
+                  <span className="card-hint">点上方漏斗任意一层，看该层完整名单；最后一层即入榜产品</span>
+                  <div className="spacer" />
+                  <button className="btn ghost sm" onClick={() => setShowTrace((v) => !v)}>
+                    {showTrace ? '收起明细' : '展开明细'}
+                  </button>
                 </div>
-              ) : view.items.length === 0 ? null : (
-                <FundTable items={view.items} criteria={appliedCriteria} onSelect={setDrawerCode} />
-              )}
+                {showTrace &&
+                  (trace ? (
+                    <StageTrace
+                      trace={trace}
+                      stageKey={activeStage}
+                      q={q}
+                      companies={selectedCompanies}
+                      onSelectFund={setDrawerCode}
+                    />
+                  ) : (
+                    <div className="trace-empty">{traceErr ? `逐层明细加载失败：${traceErr}` : '逐层明细加载中…'}</div>
+                  ))}
+              </div>
 
               {view.rejects.length > 0 && (
                 <div className="reject-card">

@@ -1,6 +1,6 @@
 import { db, getMeta, dataVersion } from './db.js';
 import { POOLS, POOL_BY_ID, POOL_GROUPS } from './config/pools.js';
-import { MIN_TRACK_YEARS, MIN_SCALE_YI } from './config/caliber.js';
+import { MIN_TRACK_YEARS, MIN_SCALE_YI, KEEP_RATIO } from './config/caliber.js';
 import {
   screenPool,
   normalizeCriteria,
@@ -247,7 +247,7 @@ export function getMetaInfo() {
       minTrackYears: MIN_TRACK_YEARS,
       minScaleYi: MIN_SCALE_YI,
       managerMinYears: 3,
-      keepRatio: 0.5,
+      keepRatio: KEEP_RATIO,
       defaultYears: DEFAULT_YEARS,
       supportedYears: SUPPORTED_YEARS,
       rankBasis: '池内排名',

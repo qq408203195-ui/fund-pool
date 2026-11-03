@@ -5,9 +5,12 @@
  *   0. 池内样本       —— 按投资类型 / 指数分类归入池子，只保留初始基金份额
  *   1. 申购状态        —— 仅保留「开放申购」
  *   2. 基金经理年限    —— 现任基金经理中至少一位管理本基金满 3 年
- *   3. 回撤分位        —— 剔除近 3 年最大回撤排名池内后 50%（保留回撤较小的）
- *   4. 收益分位        —— 剔除近 3 年年化收益排名池内后 50%
- *   5. 卡玛排序        —— 剩余基金按卡玛比率降序
+ *   3. 回撤分位        —— 剔除近 N 年最大回撤排名池内后 70%（默认只留前 30%）
+ *   4. 收益分位        —— 剔除近 N 年年化收益排名池内后 70%
+ *   5. 卡玛分位        —— 剔除近 N 年卡玛比率排名池内后 70%
+ *   6. 卡玛排序        —— 剩余基金按卡玛比率降序
+ *
+ * N 由用户分别设定，三条互不共用；保留比例也可在页面上放宽到 100%（= 关闭该条）。
  *
  * 「同类」口径 = 池内排名：在第 2 步之后留下的池内集合里统一排序。
  *
@@ -18,7 +21,7 @@
 import { rankBy, cumulativeToAnnual, calmarRatio } from './metrics.js';
 
 export const MANAGER_MIN_YEARS = 3;
-export const KEEP_RATIO = 0.5;
+export const KEEP_RATIO = 0.3;
 export const DEFAULT_YEARS = 3;
 
 /**
@@ -41,7 +44,7 @@ export const DEFAULT_CRITERIA = {
   managerMinYears: MANAGER_MIN_YEARS,
   mddKeepRatio: KEEP_RATIO,
   returnKeepRatio: KEEP_RATIO,
-  calmarKeepRatio: 1, // 1 = 不过滤，卡玛只用于最终排序
+  calmarKeepRatio: KEEP_RATIO,
   purchaseMode: 'strict',
   mddYears: DEFAULT_YEARS,
   returnYears: DEFAULT_YEARS,
@@ -100,8 +103,6 @@ export const REJECT = {
   NOT_OPEN: '非开放申购',
   MANAGER_SHORT: '基金经理任职不足3年',
   DUPLICATE_CLASS: '同一基金的其他份额',
-  MDD_BOTTOM_HALF: '近3年最大回撤排名池内后50%',
-  RETURN_BOTTOM_HALF: '近3年年化收益排名池内后50%',
   MISSING_DATA: '关键指标缺失',
 };
 

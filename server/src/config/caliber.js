@@ -19,8 +19,9 @@ export const MIN_SCALE_YI = 2;
 /** 业绩统计窗口：近 N 年。与成立门槛相互独立。 */
 export const RETURN_WINDOW_YEARS = 3;
 
-/** 回撤与收益分位各自保留的比例（剔除后 50%）。 */
-export const KEEP_RATIO = 0.5;
+/** 回撤、收益、卡玛三条分位各自保留的比例（默认只留前 30%，剔除后 70%）。
+ *  默认收得比较紧，是为了开屏不要给出一两百只产品；用户可以在页面上放宽。 */
+export const KEEP_RATIO = 0.3;
 
 /** 基金经理在本基金的最短任职年限。 */
 export const MANAGER_MIN_YEARS = 3;

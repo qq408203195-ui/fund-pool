@@ -1,11 +1,13 @@
 import type { Criteria } from '../types';
 
-/** 业务原始口径 —— 「重置」回到这里 */
+/** 业务原始口径 —— 「重置」回到这里。
+ *  三条分位默认都只留前 30%：开屏给出一百多只产品反而让人挑不动，
+ *  先收窄到能逐只读完的量，需要更大范围时再各自放宽。 */
 export const DEFAULT_CRITERIA: Criteria = {
   managerMinYears: 3,
-  mddKeepRatio: 0.5,
-  returnKeepRatio: 0.5,
-  calmarKeepRatio: 1, // 卡玛默认只做排序，不做筛选
+  mddKeepRatio: 0.3,
+  returnKeepRatio: 0.3,
+  calmarKeepRatio: 0.3,
   purchaseMode: 'strict',
   mddYears: 3,
   returnYears: 3,
@@ -85,7 +87,7 @@ export default function FilterControls({
           className="btn ghost sm"
           disabled={!dirty || disabled}
           onClick={() => onChange({ ...DEFAULT_CRITERIA })}
-          title="恢复业务原始口径：三条都按近 3 年、严格申购、经理满 3 年、回撤与收益各保留前 50%、卡玛不限"
+          title="恢复默认口径：三条都按近 3 年、严格申购、经理满 3 年、回撤/收益/卡玛各保留前 30%"
         >
           重置口径
         </button>

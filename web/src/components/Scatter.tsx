@@ -5,18 +5,18 @@ import { fmtNum, fmtPct, fmtScale } from '../utils/format';
 const PALETTE = [
   '#1a5fb4',
   '#c0392b',
-  '#0e8a52',
+  '#c2185b',
   '#8e44ad',
   '#d68910',
-  '#16788a',
+  '#34495e',
   '#7f8c8d',
   '#a04000',
   '#2e86c1',
   '#7d3c98',
 ];
 
-const KILL = '#0f766e';
-const KILL_SOFT = 'rgba(15, 118, 110, 0.055)';
+const KILL = '#d9480f';
+const KILL_SOFT = 'rgba(217, 72, 15, 0.05)';
 
 const W = 960;
 const H = 340;

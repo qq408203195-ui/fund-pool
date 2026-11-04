@@ -16,7 +16,7 @@
   --accent-soft: #e8f0fb;
 
   --up: #cf3227;
-  --down: #0e8a52;
+  --down: #1a5fb4;
 
   --radius: 10px;
   --shadow-sm: 0 1px 2px rgba(16, 29, 46, 0.05);
@@ -673,14 +673,14 @@ input {
 }
 
 .kill-toggle:hover {
-  border-color: #0f766e;
-  color: #0f766e;
+  border-color: #d9480f;
+  color: #d9480f;
 }
 
 .kill-toggle.on {
-  border-color: #0f766e;
-  background: rgba(15, 118, 110, 0.08);
-  color: #0f766e;
+  border-color: #d9480f;
+  background: rgba(217, 72, 15, 0.08);
+  color: #d9480f;
 }
 
 .kill-mark {
@@ -691,7 +691,7 @@ input {
 }
 
 .kill-toggle.on .kill-mark {
-  border-top-color: #0f766e;
+  border-top-color: #d9480f;
 }
 
 .kill-hint {
@@ -707,14 +707,14 @@ input {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  color: #0f766e;
+  color: #d9480f;
 }
 
 .legend-line {
   display: inline-block;
   width: 16px;
   height: 0;
-  border-top: 2px solid #0f766e;
+  border-top: 2px solid #d9480f;
   margin-right: 6px;
   vertical-align: middle;
 }
@@ -852,7 +852,7 @@ table.fund-table {
   white-space: nowrap;
 }
 
-/* 数值着色：中国习惯，涨红跌绿 */
+/* 数值着色：涨红；负值用蓝，全站不出现绿色 */
 .pos {
   color: var(--up);
   font-weight: 500;
@@ -1481,8 +1481,8 @@ table.trace-table {
 }
 
 .status-pill.ok {
-  background: #eef6f1;
-  color: #17754a;
+  background: #e8f0fb;
+  color: #1a5fb4;
 }
 
 .verdict {

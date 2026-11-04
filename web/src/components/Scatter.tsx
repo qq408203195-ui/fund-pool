@@ -159,9 +159,6 @@ const metricText = (it: FundItem) => `年化 ${fmtPct(it.ann3y)} · 回撤 ${fmt
 /** 圆点半径由规模开方而来，太小看不见、太大会糊成一片 */
 const dotR = (it: FundItem) => Math.max(2.6, Math.min(11, Math.sqrt(Math.max(it.scale ?? 1, 0.5)) * 0.9));
 
-/** 最多标几只，多了就互相打架 */
-const LABEL_MAX = 6;
-
 interface Box {
   x0: number;
   y0: number;
@@ -214,81 +211,92 @@ export default function Scatter({ items, onSelect }: Props) {
   const onLine = useMemo(() => new Set(killed.map((p) => p.item.code)), [killed]);
 
   // 标注排布必须赶在提前 return 之前算完——hooks 不能挂在条件分支后面
+  //
+  // 线上的每一只都必须有名字：最左那只是「最稳的」，最高那只是「收益王」，
+  // 少标任何一个，用户第一眼就会问「这个点是谁」。
+  // 好在斩杀线上方没有任何数据点（有的话它就在线上了），
+  // 所以标签全部放进线上方的空白区：贴着点上方右对齐，挤了就向上叠层，
+  // 叠不到的位置点在左侧、再不行放点下方兜底，配合虚线引导认点。
   const labels = useMemo(() => {
     const boxes: Box[] = [];
-    const out: { p: Plot; cx: number; btop: number; x0: number; x1: number; above: boolean }[] = [];
+    const out: {
+      p: Plot;
+      name: string;
+      x0: number;
+      x1: number;
+      btop: number;
+      anchor: 'end' | 'start';
+      leader: [number, number, number, number] | null;
+    }[] = [];
     if (!killed.length) return out;
     const fs = 10.5;
     const h = 24;
     const rightEdge = W - PAD.r;
     const leftEdge = PAD.l + 2;
+    // 线上的点一多，名字截短一点，标签变窄能少叠好几层
+    const nameMax = killed.length > 8 ? 9 : 13;
+    const cut = (s: string) => (s.length > nameMax ? s.slice(0, nameMax - 1) + '…' : s);
 
-    // 点多了不逐个标：一个密集阶梯挤上七八个标签，谁也认不出谁。
-    // 只留收益最高的 6 只（这才是大家真正会挑的）。
-    const picked = [...killed].sort((a, b) => b.y - a.y).slice(0, LABEL_MAX);
-    // 收益最高的先占位——它是这个池子的最优解，标签最不该被挤掉；
-    // 其余的按回撤从左到右排，读起来是自然的顺序
-    const seq = [picked[0], ...picked.slice(1).sort((a, b) => a.x - b.x)].filter(Boolean);
-
-    // 标签压住别人的圆点比压住空白难看得多，所以把点也当障碍物
-    const coversDot = (box: Box, self: Plot) =>
-      points.some((q) => {
-        if (q === self) return false;
-        const qx = sx(q.x);
-        const qy = sy(q.y);
-        const qr = dotR(q.item) + 2;
-        return qx > box.x0 - qr && qx < box.x1 + qr && qy > box.y0 - qr && qy < box.y1 + qr;
-      });
+    // 占位顺序：最左（最稳）和最高（收益王）先落位——这两个是用户最先问
+    // 「这是谁」的点，绝不能被挤掉；其余的从左到右，挤不下的才放弃
+    const first = killed[0];
+    const best = killed.reduce((a, b) => (b.y > a.y ? b : a), killed[0]);
+    const rest = killed.filter((p) => p !== first && p !== best);
+    const seq = best !== first ? [first, best, ...rest] : [first, ...rest];
 
     for (const p of seq) {
       const r = dotR(p.item);
-      const name = p.item.name.length > 13 ? p.item.name.slice(0, 12) + '…' : p.item.name;
+      const name = cut(p.item.name);
       // 宽度取两行里宽的那行，否则第二行会比盒子宽出去、和隔壁标签黏在一起
       const w = Math.max(estWidth(name, fs), estWidth(metricText(p.item), 9.5)) + 10;
-      const cx = sx(p.x);
+      const px = sx(p.x);
       const py = sy(p.y);
-      // 上下两行都先算出理想位置；顶到画布边就往回收，只要别盖住自己的点
-      const aboveRaw = py - r - 7 - h;
-      const above = Math.max(aboveRaw, PAD.t + 2);
-      const belowRaw = py + r + 7;
-      const below = Math.min(belowRaw, H - PAD.b - 2 - h);
-      const rows = [
-        above + h <= py - r - 2 ? above : null,
-        below >= py + r + 2 ? below : null,
-      ];
-      // 候选位置按「离点越近越优先」排：先正上方、正下方，再左右错开半格、一格。
-      // 位移优先、上下其次——否则标签会为了留在上方被推到老远，
-      // 两根相邻标签读起来像同一行字。
-      const shifts = [0, w * 0.5, -w * 0.5, w * 0.9, -w * 0.9];
-      let placed: { x0: number; btop: number; above: boolean; si: number } | null = null;
-      // 先按「不许压别的点」找位置；实在找不到再放宽，总比不标强
-      for (const avoidDots of [true, false]) {
-        for (let si = 0; si < shifts.length && !placed; si++) {
-          for (let ri = 0; ri < rows.length; ri++) {
-            const btop = rows[ri];
-            if (btop == null) continue;
-            const x0 = Math.min(Math.max(cx - w / 2 + shifts[si], leftEdge), rightEdge - w);
-            const box: Box = { x0, y0: btop, x1: x0 + w, y1: btop + h };
-            if (boxes.some((b) => overlaps(b, box))) continue;
-            if (avoidDots && coversDot(box, p)) continue;
-            placed = { x0, btop, above: ri === 0, si };
-            break;
-          }
-        }
-        if (placed) break;
+
+      // 候选位置从近到远：点上方叠层（优先，线上方必然没有点）→ 点左侧居中 →
+      // 点下方叠层（会压到已被压暗的点，白描边文字仍可读，最后的选择）
+      const cands: { x0: number; btop: number; anchor: 'end' | 'start'; above: boolean }[] = [];
+      const rightAligned = px - 6 - w >= leftEdge;
+      for (let k = 0; k < 6; k++) {
+        const btop = py - r - 6 - h - k * (h + 2);
+        if (btop < PAD.t + 2) break;
+        cands.push({ x0: rightAligned ? px - 6 - w : px + 6, btop, anchor: rightAligned ? 'end' : 'start', above: true });
       }
-      // 被推到快一格远的地方就别标了——那个位置离开自己的点太远，
-      // 与其画一根跨半个图的引导线，不如让位给更该标的（收益最高的那只除外）
-      if (placed && placed.si >= 3 && p !== picked[0]) placed = null;
-      // 仍挤不下就丢掉这只的标签，别硬塞
-      if (placed) {
-        boxes.push({ x0: placed.x0, y0: placed.btop, x1: placed.x0 + w, y1: placed.btop + h });
-        out.push({ p, cx: placed.x0 + w / 2, btop: placed.btop, x0: placed.x0, x1: placed.x0 + w, above: placed.above });
+      cands.push({ x0: px - r - 8 - w, btop: py - h / 2, anchor: 'end', above: false });
+      for (let k = 0; k < 4; k++) {
+        const btop = py + r + 7 + k * (h + 2);
+        if (btop + h > H - PAD.b - 2) break;
+        cands.push({ x0: rightAligned ? px - 6 - w : px + 6, btop, anchor: rightAligned ? 'end' : 'start', above: false });
       }
+
+      let placed: (typeof cands)[number] | null = null;
+      for (const c of cands) {
+        const x0 = Math.min(Math.max(c.x0, leftEdge), rightEdge - w);
+        if (x0 !== c.x0 && c.anchor === 'end' && c.above) continue; // 右对齐被夹偏就别硬放，换下一个候选
+        const box: Box = { x0, y0: c.btop, x1: x0 + w, y1: c.btop + h };
+        if (c.btop < PAD.t + 2 || c.btop + h > H - PAD.b - 2) continue;
+        if (boxes.some((b) => overlaps(b, box))) continue;
+        placed = { ...c, x0 };
+        boxes.push(box);
+        break;
+      }
+      if (!placed) continue;
+
+      // 引导线：标签离点远了就补一根，从盒子边缘指向圆点
+      const cx = Math.min(Math.max(px, placed.x0), placed.x0 + w);
+      const cy = Math.min(Math.max(py, placed.btop), placed.btop + h);
+      const dx = px - cx;
+      const dy = py - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const gap = Math.max(0, len - 4 - (r + 3));
+      const leader: [number, number, number, number] | null =
+        gap > 12
+          ? [cx + (dx / len) * 4, cy + (dy / len) * 4, px - (dx / len) * (r + 3), py - (dy / len) * (r + 3)]
+          : null;
+      out.push({ p, name, x0: placed.x0, x1: placed.x0 + w, btop: placed.btop, anchor: placed.anchor, leader });
     }
     return out;
     // sx/sy 只依赖下面这两个轴
-  }, [killed, points, xAxis, yAxis]);
+  }, [killed, xAxis, yAxis]);
 
   if (!points.length) return null;
 
@@ -336,6 +344,7 @@ export default function Scatter({ items, onSelect }: Props) {
             {' '}
             <b style={{ color: KILL }}>斩杀线</b>连起当前视图里每个回撤档位中收益最高的 {killed.length}{' '}
             只——落在线右下方的点，都能找到回撤不比它大、收益却更高的基金。
+            {labels.length < killed.length && ' 标签挤不下的点，悬停圆点可看名字。'}
           </>
         ) : (
           <> 坐标轴按实际分布收紧。</>
@@ -429,33 +438,28 @@ export default function Scatter({ items, onSelect }: Props) {
           </>
         )}
 
-        {/* 线上基金的标注 */}
-        {labels.map(({ p, cx, btop, x0, x1, above }) => {
+        {/* 线上基金的标注：全部标注，放不下的叠到更高层，配虚线引导 */}
+        {labels.map(({ p, name, x0, x1, btop, anchor, leader }) => {
           const it = p.item;
-          const name = it.name.length > 13 ? it.name.slice(0, 12) + '…' : it.name;
-          const px = sx(p.x);
-          const py = sy(p.y);
-          const r = dotR(it);
-          // 标签被挤开后补一根引导线，否则认不出它说的是哪个点
-          const shifted = Math.abs(cx - px) > 10;
+          const tx = anchor === 'end' ? x1 : x0;
           return (
             <g key={`l${it.code}`} style={{ cursor: 'pointer' }} onClick={() => onSelect(it.code)}>
-              {shifted && (
+              {leader && (
                 <line
-                  x1={Math.min(Math.max(px, x0 + 6), x1 - 6)}
-                  y1={above ? btop + 24 : btop}
-                  x2={px}
-                  y2={above ? py - r - 3 : py + r + 3}
+                  x1={leader[0]}
+                  y1={leader[1]}
+                  x2={leader[2]}
+                  y2={leader[3]}
                   stroke={KILL}
                   strokeWidth={1}
-                  strokeOpacity={0.35}
+                  strokeOpacity={0.4}
                   strokeDasharray="2 2"
                 />
               )}
               <text
-                x={cx}
+                x={tx}
                 y={btop + 10}
-                textAnchor="middle"
+                textAnchor={anchor}
                 fontSize={10.5}
                 fontWeight={600}
                 fill="#10151d"
@@ -467,9 +471,9 @@ export default function Scatter({ items, onSelect }: Props) {
                 {name}
               </text>
               <text
-                x={cx}
+                x={tx}
                 y={btop + 21}
-                textAnchor="middle"
+                textAnchor={anchor}
                 fontSize={9.5}
                 fill={KILL}
                 paintOrder="stroke"

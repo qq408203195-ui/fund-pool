@@ -187,6 +187,17 @@ export interface BacktestStats {
   calmar: number | null;
 }
 
+/** 一种再平衡频率下的完整回测结果 */
+export interface BacktestFreq {
+  name: string;
+  rebalances: number;
+  start: string;
+  end: string;
+  strategyNav: number[];
+  quarters: BacktestQuarter[];
+  stats: BacktestStats;
+}
+
 /** 可切换的对比基准；指数晚于回测起点上市时 nav 前段为 null */
 export interface BacktestBench {
   name: string;
@@ -203,6 +214,7 @@ export interface BacktestData {
   dates: string[];
   strategyNav: number[];
   benchmarks: Record<string, BacktestBench>;
+  freqs: Record<string, BacktestFreq>;
   quarters: BacktestQuarter[];
   stats: { strategy: BacktestStats };
   rules: string;

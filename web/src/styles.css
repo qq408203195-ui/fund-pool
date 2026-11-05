@@ -1932,3 +1932,11 @@ table.trace-table {
   color: #fff;
   font-weight: 600;
 }
+
+/* 频率与基准两组按钮之间的竖分隔 */
+.bt-switch-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 2px 4px;
+}

@@ -28,6 +28,16 @@ interface BtStats {
   mdd: number;
   calmar: number | null;
 }
+/** 一种再平衡频率下的完整回测结果 */
+interface FreqResult {
+  name: string;
+  rebalances: number;
+  start: string;
+  end: string;
+  strategyNav: number[];
+  quarters: Quarter[];
+  stats: BtStats;
+}
 interface BacktestData {
   generatedAt: string;
   start: string;
@@ -35,6 +45,7 @@ interface BacktestData {
   dates: string[];
   strategyNav: number[];
   benchmarks: Record<string, Benchmark>;
+  freqs: Record<string, FreqResult>;
   quarters: Quarter[];
   stats: { strategy: BtStats };
   rules: string;
@@ -71,6 +82,7 @@ export default function BacktestCard() {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
   const [benchKey, setBenchKey] = useState('pool');
+  const [freqKey, setFreqKey] = useState('quarterly');
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -82,13 +94,15 @@ export default function BacktestCard() {
 
   const chart = useMemo(() => {
     if (!data || data.dates.length < 2) return null;
+    const freq = data.freqs[freqKey] ?? Object.values(data.freqs)[0];
+    if (!freq) return null;
     const bench = data.benchmarks[benchKey] ?? Object.values(data.benchmarks)[0];
     if (!bench) return null;
     const navB = bench.nav;
     // Y 轴范围只看有效段
     const valid = navB.filter((v): v is number => v != null);
     if (!valid.length) return null;
-    const all = [...data.strategyNav, ...valid, 1];
+    const all = [...freq.strategyNav, ...valid, 1];
     const { lo, hi, ticks } = niceTicks(Math.min(...all), Math.max(...all));
     const sy = (v: number) => PAD.t + (hi - v) / (hi - lo) * (H - PAD.t - PAD.b);
     const sx = (i: number) => PAD.l + (i / (data.dates.length - 1)) * (W - PAD.l - PAD.r);
@@ -119,15 +133,16 @@ export default function BacktestCard() {
     return {
       sy,
       sx,
-      pathS: line(data.strategyNav),
+      pathS: line(freq.strategyNav),
       pathB: line(navB),
+      freq,
       bench,
       lo,
       hi,
       ticks,
       yearTicks,
     };
-  }, [data, benchKey]);
+  }, [data, benchKey, freqKey]);
 
   if (err) return null;
   if (!data) return null;
@@ -141,24 +156,40 @@ export default function BacktestCard() {
     setHover(Math.max(0, Math.min(data.dates.length - 1, i)));
   };
 
-  const s = data.stats.strategy;
+  const s = (chart?.freq ?? data.freqs[freqKey])?.stats;
+  const freqNow = data.freqs[freqKey] ?? Object.values(data.freqs)[0];
   const benchNow = data.benchmarks[benchKey] ?? Object.values(data.benchmarks)[0];
   const bv = hover != null && benchNow ? benchNow.nav[hover] : null;
-  // 悬停位置当时生效的调仓：取日期 ≤ 悬停日 的最后一个季度
+  const freqQuarters = freqNow ? freqNow.quarters : data.quarters;
+  // 悬停位置当时生效的调仓：取日期 ≤ 悬停日 的最后一个调仓期
   const hq =
     hover != null
-      ? [...data.quarters].reverse().find((q) => q.date <= data.dates[hover]) ?? null
+      ? [...freqQuarters].reverse().find((q) => q.date <= data.dates[hover]) ?? null
       : null;
-  const shown = open ? data.quarters : data.quarters.slice(-1);
+  const shown = open ? freqQuarters : freqQuarters.slice(-1);
+  const nPicks = freqNow ? freqNow.quarters[0]?.picks.length ?? 5 : 5;
 
   return (
     <div className="scatter-card bt-card">
       <div className="card-head">
         <span className="card-title">斩杀线组合回测 · 2016 至今</span>
-        <span className="card-hint">每季度换仓一次，等权持有斩杀线右上角 5 只，回测起点净值 = 1</span>
+        <span className="card-hint">
+          等权持有斩杀线右上角 {nPicks} 只，按所选频率换仓再平衡，回测起点净值 = 1
+        </span>
       </div>
 
-      <div className="bt-switch" role="tablist">
+      <div className="bt-switch" role="tablist" aria-label="再平衡频率">
+        {Object.entries(data.freqs).map(([key, fr]) => (
+          <button
+            key={key}
+            className={`bt-switch-btn${key === freqKey ? ' on' : ''}`}
+            onClick={() => setFreqKey(key)}
+            title={`${fr.name}：共 ${fr.rebalances} 次调仓`}
+          >
+            {fr.name}
+          </button>
+        ))}
+        <span className="bt-switch-sep" />
         {benchList.map(([key, bm]) => (
           <button
             key={key}
@@ -174,10 +205,14 @@ export default function BacktestCard() {
         <div className="bt-stat">
           <span className="bt-dot" style={{ background: ORANGE }} />
           <b>斩杀线组合</b>
-          <span>累计 <em style={{ color: ORANGE }}>{s.cum > 0 ? '+' : ''}{s.cum}%</em></span>
-          <span>年化 {s.ann}%</span>
-          <span>回撤 {s.mdd}%</span>
-          <span>卡玛 {s.calmar ?? '—'}</span>
+          {s && (
+            <>
+              <span>累计 <em style={{ color: ORANGE }}>{s.cum > 0 ? '+' : ''}{s.cum}%</em></span>
+              <span>年化 {s.ann}%</span>
+              <span>回撤 {s.mdd}%</span>
+              <span>卡玛 {s.calmar ?? '—'}</span>
+            </>
+          )}
         </div>
         <div className="bt-stat">
           <span className="bt-dot" style={{ background: GRAY }} />
@@ -243,12 +278,12 @@ export default function BacktestCard() {
       <div className="bt-quarters">
         <div className="trace-bar">
           <span className="trace-bar-title">
-            各季度入选名单{hq ? `（${hq.date} 调仓·当时持有这 5 只）` : ''}
+            各期入选名单{hq ? `（${hq.date} 调仓·当时持有这 ${nPicks} 只）` : ''}
           </span>
-          <span className="card-hint">共 {data.quarters.length} 次调仓</span>
+          <span className="card-hint">{freqNow?.name}，共 {freqNow?.rebalances ?? freqQuarters.length} 次调仓</span>
           <div className="spacer" />
           <button className="btn ghost sm" onClick={() => setOpen((v) => !v)}>
-            {open ? '收起名单' : '展开全部季度'}
+            {open ? '收起名单' : '展开全部调仓期'}
           </button>
         </div>
         <div className="bt-quarter-list">

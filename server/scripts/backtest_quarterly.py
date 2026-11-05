@@ -306,10 +306,17 @@ def main():
             vb *= (1 + (rb / cnt if cnt else 0.0))
             nav_b.append(vb)
 
-    def stats(nav, days):
+    # —— 指数基准：从 data/benchmarks.json 读取（fetch_benchmarks.py 生成），
+    # 对齐到组合计息日；指数晚于起点上市的（如 930950），上市前的日子留 None，
+    # 净值从它自己首个有效日起 1.0 起——统计也只算有效段。 ——
+    bench_file = os.path.join(HERE, '..', 'data', 'benchmarks.json')
+    raw_bench = {}
+    if os.path.exists(bench_file):
+        with open(bench_file, encoding='utf-8') as f:
+            raw_bench = json.load(f)
+
+    def stats(nav, days, d0, d1):
         cum = nav[-1] - 1
-        d0 = datetime.strptime(fmt(sim_days[0]), '%Y-%m-%d')
-        d1 = datetime.strptime(fmt(sim_days[-1]), '%Y-%m-%d')
         years = (d1 - d0).days / 365.25
         ann = (1 + cum) ** (1 / years) - 1 if years > 0 else 0
         peak = nav[0]
@@ -320,6 +327,38 @@ def main():
         return {'cum': round(cum * 100, 1), 'ann': round(ann * 100, 1),
                 'mdd': round(mdd * 100, 1), 'calmar': round(ann / abs(mdd), 2) if mdd else None}
 
+    d_start = datetime.strptime(fmt(sim_days[0]), '%Y-%m-%d')
+    d_end = datetime.strptime(fmt(sim_days[-1]), '%Y-%m-%d')
+
+    benchmarks = {
+        'pool': {'name': '池内等权', 'nav': [round(v, 6) for v in nav_b],
+                 'stats': stats(nav_b, sim_days, d_start, d_end), 'start': fmt(sim_days[0])},
+    }
+    for key, b in raw_bench.items():
+        close = {p[0]: p[1] for p in b['points']}
+        nav_i, prev, first_v = [], None, None
+        for d in sim_days:
+            if d in close:
+                prev = close[d]
+                if first_v is None:
+                    first_v = prev
+            # 指数停发/缺日 → 沿用前值；首个有效日之前留 None
+            nav_i.append(prev / first_v if (first_v and prev is not None) else None)
+        if not first_v:
+            continue
+        i0 = next(i for i, v in enumerate(nav_i) if v is not None)
+        seg = nav_i[i0:]
+        benchmarks[key] = {
+            'name': b['name'],
+            'nav': [round(v, 6) if v is not None else None for v in nav_i],
+            'stats': stats(seg, sim_days[i0:],
+                           datetime.strptime(fmt(sim_days[i0]), '%Y-%m-%d'), d_end),
+            'start': fmt(sim_days[i0]),
+        }
+        print('%s(%s): %s 起，累计 %.1f%% 回撤 %.1f%%'
+              % (key, b['name'], fmt(sim_days[i0]), benchmarks[key]['stats']['cum'],
+                 benchmarks[key]['stats']['mdd']))
+
     doc = {
         'generatedAt': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'pool': POOL,
@@ -327,9 +366,9 @@ def main():
         'end': fmt(sim_days[-1]),
         'dates': [fmt(d) for d in sim_days],
         'strategyNav': [round(v, 6) for v in nav_s],
-        'benchmarkNav': [round(v, 6) for v in nav_b],
+        'benchmarks': benchmarks,
         'quarters': picks_log,
-        'stats': {'strategy': stats(nav_s, sim_days), 'benchmark': stats(nav_b, sim_days)},
+        'stats': {'strategy': stats(nav_s, sim_days, d_start, d_end)},
         'rules': ('每季度首个交易日：近3年回撤池内前30%、近3年年化前30%、经理任职超3年的基金中，'
                   '画斩杀线并取收益最高的5只等权买入，持有一个季度后等权再平衡。'
                   '线上不足5只时从过筛候选按收益补足。'
@@ -339,8 +378,6 @@ def main():
         json.dump(doc, f, ensure_ascii=False, separators=(',', ':'))
     print('策略: %s 累计 %.1f%% 年化 %.1f%% 回撤 %.1f%%' % (
         doc['start'], doc['stats']['strategy']['cum'], doc['stats']['strategy']['ann'], doc['stats']['strategy']['mdd']))
-    print('基准: 累计 %.1f%% 年化 %.1f%% 回撤 %.1f%%' % (
-        doc['stats']['benchmark']['cum'], doc['stats']['benchmark']['ann'], doc['stats']['benchmark']['mdd']))
     print('写入 %s（%.1f KB）' % (OUT, os.path.getsize(OUT) / 1024))
 
 

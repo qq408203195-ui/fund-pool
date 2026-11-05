@@ -15,18 +15,28 @@ interface Quarter {
   filled?: boolean;
   picks: QuarterPick[];
 }
+/** 指数晚于回测起点上市时（如 930950），nav 前段为 null */
+interface Benchmark {
+  name: string;
+  start: string;
+  nav: (number | null)[];
+  stats: { cum: number; ann: number; mdd: number; calmar: number | null };
+}
+interface BtStats {
+  cum: number;
+  ann: number;
+  mdd: number;
+  calmar: number | null;
+}
 interface BacktestData {
   generatedAt: string;
   start: string;
   end: string;
   dates: string[];
   strategyNav: number[];
-  benchmarkNav: number[];
+  benchmarks: Record<string, Benchmark>;
   quarters: Quarter[];
-  stats: {
-    strategy: { cum: number; ann: number; mdd: number; calmar: number | null };
-    benchmark: { cum: number; ann: number; mdd: number; calmar: number | null };
-  };
+  stats: { strategy: BtStats };
   rules: string;
 }
 
@@ -60,6 +70,7 @@ export default function BacktestCard() {
   const [err, setErr] = useState('');
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
+  const [benchKey, setBenchKey] = useState('pool');
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -71,11 +82,30 @@ export default function BacktestCard() {
 
   const chart = useMemo(() => {
     if (!data || data.dates.length < 2) return null;
-    const all = [...data.strategyNav, ...data.benchmarkNav, 1];
+    const bench = data.benchmarks[benchKey] ?? Object.values(data.benchmarks)[0];
+    if (!bench) return null;
+    const navB = bench.nav;
+    // Y 轴范围只看有效段
+    const valid = navB.filter((v): v is number => v != null);
+    if (!valid.length) return null;
+    const all = [...data.strategyNav, ...valid, 1];
     const { lo, hi, ticks } = niceTicks(Math.min(...all), Math.max(...all));
     const sy = (v: number) => PAD.t + (hi - v) / (hi - lo) * (H - PAD.t - PAD.b);
     const sx = (i: number) => PAD.l + (i / (data.dates.length - 1)) * (W - PAD.l - PAD.r);
-    const line = (nav: number[]) => nav.map((v, i) => `${i ? 'L' : 'M'}${sx(i).toFixed(1)} ${sy(v).toFixed(1)}`).join(' ');
+    const line = (nav: (number | null)[]) => {
+      // 上市前的 null 断开线段，别连到 0
+      let d = '';
+      let pen = false;
+      nav.forEach((v, i) => {
+        if (v == null) {
+          pen = false;
+          return;
+        }
+        d += `${pen ? 'L' : 'M'}${sx(i).toFixed(1)} ${sy(v).toFixed(1)} `;
+        pen = true;
+      });
+      return d.trim();
+    };
     // 年度刻度：每年第一个交易日
     const yearTicks: { i: number; label: string }[] = [];
     let lastYear = '';
@@ -86,12 +116,23 @@ export default function BacktestCard() {
         lastYear = y;
       }
     });
-    return { sy, sx, pathS: line(data.strategyNav), pathB: line(data.benchmarkNav), lo, hi, ticks, yearTicks };
-  }, [data]);
+    return {
+      sy,
+      sx,
+      pathS: line(data.strategyNav),
+      pathB: line(navB),
+      bench,
+      lo,
+      hi,
+      ticks,
+      yearTicks,
+    };
+  }, [data, benchKey]);
 
   if (err) return null;
   if (!data) return null;
 
+  const benchList = Object.entries(data.benchmarks);
   const onMove = (e: React.MouseEvent) => {
     if (!chart || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
@@ -101,7 +142,8 @@ export default function BacktestCard() {
   };
 
   const s = data.stats.strategy;
-  const b = data.stats.benchmark;
+  const benchNow = data.benchmarks[benchKey] ?? Object.values(data.benchmarks)[0];
+  const bv = hover != null && benchNow ? benchNow.nav[hover] : null;
   // 悬停位置当时生效的调仓：取日期 ≤ 悬停日 的最后一个季度
   const hq =
     hover != null
@@ -116,6 +158,18 @@ export default function BacktestCard() {
         <span className="card-hint">每季度换仓一次，等权持有斩杀线右上角 5 只，回测起点净值 = 1</span>
       </div>
 
+      <div className="bt-switch" role="tablist">
+        {benchList.map(([key, bm]) => (
+          <button
+            key={key}
+            className={`bt-switch-btn${key === benchKey ? ' on' : ''}`}
+            onClick={() => setBenchKey(key)}
+          >
+            {bm.name}
+          </button>
+        ))}
+      </div>
+
       <div className="bt-stats">
         <div className="bt-stat">
           <span className="bt-dot" style={{ background: ORANGE }} />
@@ -127,11 +181,12 @@ export default function BacktestCard() {
         </div>
         <div className="bt-stat">
           <span className="bt-dot" style={{ background: GRAY }} />
-          <b>池内等权基准</b>
-          <span>累计 <em>{b.cum > 0 ? '+' : ''}{b.cum}%</em></span>
-          <span>年化 {b.ann}%</span>
-          <span>回撤 {b.mdd}%</span>
-          <span>卡玛 {b.calmar ?? '—'}</span>
+          <b>{benchNow.name}</b>
+          <span>累计 <em>{benchNow.stats.cum > 0 ? '+' : ''}{benchNow.stats.cum}%</em></span>
+          <span>年化 {benchNow.stats.ann}%</span>
+          <span>回撤 {benchNow.stats.mdd}%</span>
+          <span>卡玛 {benchNow.stats.calmar ?? '—'}</span>
+          {benchNow.start > data.start && <span className="card-hint">（{benchNow.start} 起）</span>}
         </div>
         <div className="spacer" />
         <span className="card-hint">{data.start} ~ {data.end}</span>
@@ -171,12 +226,14 @@ export default function BacktestCard() {
             <g>
               <line x1={chart.sx(hover)} x2={chart.sx(hover)} y1={PAD.t} y2={H - PAD.b} stroke={ORANGE} strokeWidth={1} strokeOpacity={0.45} />
               <circle cx={chart.sx(hover)} cy={chart.sy(data.strategyNav[hover])} r={3.2} fill={ORANGE} />
-              <circle cx={chart.sx(hover)} cy={chart.sy(data.benchmarkNav[hover])} r={2.6} fill={GRAY} />
+              {bv != null && <circle cx={chart.sx(hover)} cy={chart.sy(bv)} r={2.6} fill={GRAY} />}
               <g transform={`translate(${Math.min(chart.sx(hover) + 10, W - PAD.r - 168)},${PAD.t + 6})`}>
                 <rect width={162} height={52} rx={6} fill="#fff" stroke="#e4e8ef" />
                 <text x={10} y={16} fontSize={10.5} fontWeight={600} fill="#10151d">{fmtDate(data.dates[hover])}</text>
                 <text x={10} y={31} fontSize={10} fill={ORANGE}>组合 {data.strategyNav[hover].toFixed(4)}</text>
-                <text x={10} y={45} fontSize={10} fill="#67707f">基准 {data.benchmarkNav[hover].toFixed(4)}</text>
+                <text x={10} y={45} fontSize={10} fill="#67707f">
+                  {bv != null ? `${benchNow.name} ${bv.toFixed(4)}` : `${benchNow.name} 未上市`}
+                </text>
               </g>
             </g>
           )}
@@ -200,7 +257,7 @@ export default function BacktestCard() {
               <div className="bt-q-head">
                 <b>{q.date}</b>
                 <span className="card-hint">
-                  候选 {q.universe} · 过半 {q.passed} · 斩杀线上 {q.onLine}
+                  候选 {q.universe} · 过筛 {q.passed} · 斩杀线上 {q.onLine}
                   {q.filled ? ' · 线上不足 5 只已按收益补足' : ''}
                 </span>
               </div>
@@ -217,7 +274,7 @@ export default function BacktestCard() {
         </div>
       </div>
 
-      <p className="bt-note">{data.rules} 经理任职年限按<b>现任经理</b>的任职起始日回溯——早年季度里中途换过经理的基金会被排除，候选因此偏少；调仓只用了当时可得的数据，不含未来信息。<b>本回测基于公开历史数据机械模拟，费税未计，过往业绩不预示未来表现。</b></p>
+      <p className="bt-note">{data.rules} 基准指数来自腾讯/雪球行情接口的日收盘点位。经理任职年限按<b>现任经理</b>的任职起始日回溯——早年季度里中途换过经理的基金会被排除，候选因此偏少；调仓只用了当时可得的数据，不含未来信息。<b>本回测基于公开历史数据机械模拟，费税未计，过往业绩不预示未来表现。</b></p>
     </div>
   );
 }

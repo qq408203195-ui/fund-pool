@@ -187,6 +187,14 @@ export interface BacktestStats {
   calmar: number | null;
 }
 
+/** 可切换的对比基准；指数晚于回测起点上市时 nav 前段为 null */
+export interface BacktestBench {
+  name: string;
+  start: string;
+  nav: (number | null)[];
+  stats: BacktestStats;
+}
+
 export interface BacktestData {
   generatedAt: string;
   pool: string;
@@ -194,8 +202,8 @@ export interface BacktestData {
   end: string;
   dates: string[];
   strategyNav: number[];
-  benchmarkNav: number[];
+  benchmarks: Record<string, BacktestBench>;
   quarters: BacktestQuarter[];
-  stats: { strategy: BacktestStats; benchmark: BacktestStats };
+  stats: { strategy: BacktestStats };
   rules: string;
 }

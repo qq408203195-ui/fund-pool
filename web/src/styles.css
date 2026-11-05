@@ -1901,3 +1901,34 @@ table.trace-table {
   color: var(--ink-2);
   font-weight: 600;
 }
+
+/* 基准切换按钮排 */
+.bt-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.bt-switch-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-2);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bt-switch-btn:hover {
+  border-color: #d9480f;
+  color: #d9480f;
+}
+
+.bt-switch-btn.on {
+  background: #d9480f;
+  border-color: #d9480f;
+  color: #fff;
+  font-weight: 600;
+}

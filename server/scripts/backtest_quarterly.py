@@ -6,8 +6,8 @@
 规则（严格无前视偏差）：
   1. 调仓日 = 2016 年起每季度首个交易日；
   2. 调仓日 t 当天，在主动权益池里筛：
-     - 近 3 年（t-3y ~ t）最大回撤处于池内较小的一半（回撤前 50%）；
-     - 近 3 年几何年化收益处于池内较大的一半（收益前 50%）；
+     - 近 3 年（t-3y ~ t）最大回撤处于池内最小的 30%（回撤前 30%）；
+     - 近 3 年几何年化收益处于池内最大的 30%（收益前 30%）；
      - 现任基金经理任职起始日 ≤ t - 3 年（任职超 3 年）；
      - 近 3 年内数据点 ≥ 690 个（序列完整，防新发基金混入）；
   3. 在过滤后的池内画斩杀线（按回撤升序、收益创新高者留下，同回撤取收益高者），
@@ -24,7 +24,6 @@ import json
 import math
 import os
 import sqlite3
-import statistics
 from datetime import datetime, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +35,8 @@ OUT = os.path.join(ROOT, 'data', 'backtest.json')
 POOL = 'active-equity'
 START_YEAR = 2016
 TOP_N = 5
+# 回撤/收益的筛选分位：回撤处于池内最小 KEEP_Q，收益处于池内最大 KEEP_Q
+KEEP_Q = 0.3
 MIN_POINTS_3Y = 690          # 3 年约 730 个交易日，允许少量停牌缺日
 LOOKBACK_YEARS = 3
 
@@ -94,6 +95,20 @@ def window_metrics(dates, navs, lo, hi):
         if dd < mdd:
             mdd = dd
     return {'cum': cum, 'ann': ann, 'mdd': mdd, 'n': i1 - i0 + 1}
+
+
+def _quantile(sorted_vals, q):
+    """线性插值分位数（与 numpy.quantile 默认行为一致），输入须已升序。"""
+    if not sorted_vals:
+        raise ValueError('empty')
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    pos = (len(sorted_vals) - 1) * q
+    lo = math.floor(pos)
+    hi = math.ceil(pos)
+    if lo == hi:
+        return sorted_vals[lo]
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)
 
 
 def kill_line(cands):
@@ -192,12 +207,13 @@ def main():
             continue
         mdds = sorted(abs(c['mdd']) for c in cands)
         anns = sorted(c['ann'] for c in cands)
-        med_mdd = statistics.median(mdds)
-        med_ann = statistics.median(anns)
-        half = [c for c in cands if abs(c['mdd']) <= med_mdd and c['ann'] >= med_ann]
+        # 分位截断：回撤取最小的 KEEP_Q，收益取最大的 KEEP_Q（线性插值取分位值）
+        q_mdd = _quantile(mdds, KEEP_Q)
+        q_ann = _quantile(anns, 1 - KEEP_Q)
+        half = [c for c in cands if abs(c['mdd']) <= q_mdd and c['ann'] >= q_ann]
         line = kill_line(half)
         # 右上角 = 收益最高的 5 只；线上不足 5 只时（早期季度经理任职卡得狠）
-        # 从过半候选里按年化收益补足——它们同样过了回撤/收益/年限三道闸
+        # 从过筛候选里按年化收益补足——它们同样过了回撤/收益/年限三道闸
         tail = sorted(line, key=lambda c: -c['ann'])[:TOP_N]
         if len(tail) < TOP_N:
             on = {c['code'] for c in tail}
@@ -314,8 +330,9 @@ def main():
         'benchmarkNav': [round(v, 6) for v in nav_b],
         'quarters': picks_log,
         'stats': {'strategy': stats(nav_s, sim_days), 'benchmark': stats(nav_b, sim_days)},
-        'rules': ('每季度首个交易日：近3年回撤池内前50%、近3年年化前50%、经理任职超3年的基金中，'
+        'rules': ('每季度首个交易日：近3年回撤池内前30%、近3年年化前30%、经理任职超3年的基金中，'
                   '画斩杀线并取收益最高的5只等权买入，持有一个季度后等权再平衡。'
+                  '线上不足5只时从过筛候选按收益补足。'
                   '选基只用截至调仓日的数据，收益从次一交易日起算。'),
     }
     with open(OUT, 'w', encoding='utf-8') as f:

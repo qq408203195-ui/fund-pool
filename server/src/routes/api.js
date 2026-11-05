@@ -1,5 +1,5 @@
 import express from 'express';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { getPoolView, getPoolTrace, listPools, getMetaInfo, getFundDetail } from '../repo.js';
@@ -9,17 +9,18 @@ import { getMeta } from '../db.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BACKTEST_FILE = path.join(HERE, '..', '..', 'data', 'backtest.json');
 
-/** 回测结果读一次缓存住；文件更新（重跑脚本）后重启进程即可生效 */
+/** 回测结果按文件 mtime 缓存——重跑脚本后无需重启进程 */
 let backtestCache;
+let backtestMtime = 0;
 function loadBacktest() {
-  if (backtestCache === undefined) {
-    try {
-      backtestCache = existsSync(BACKTEST_FILE)
-        ? JSON.parse(readFileSync(BACKTEST_FILE, 'utf-8'))
-        : null;
-    } catch {
-      backtestCache = null;
+  try {
+    const mtime = existsSync(BACKTEST_FILE) ? statSync(BACKTEST_FILE).mtimeMs : 0;
+    if (backtestCache === undefined || mtime !== backtestMtime) {
+      backtestMtime = mtime;
+      backtestCache = mtime ? JSON.parse(readFileSync(BACKTEST_FILE, 'utf-8')) : null;
     }
+  } catch {
+    backtestCache = null;
   }
   return backtestCache;
 }

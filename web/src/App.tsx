@@ -193,54 +193,7 @@ export default function App() {
                 disabled={loading}
               />
 
-              <Funnel
-                stats={view.stats}
-                active={activeStage}
-                criteria={criteria}
-                onSelect={(k) => {
-                  setActiveStage(k);
-                  setShowTrace(true);
-                }}
-              />
-
-              {/* 池子被筛空时，原因必须顶在最前面。否则用户要先滚过几十行逐层明细
-                  才能看到一句话解释，容易误读成页面坏了。 */}
-              {!loading && view.items.length === 0 && (
-                <EmptyState
-                  view={view}
-                  hasFilter={selectedCompanies.length > 0 || !!q}
-                  onClearFilter={() => {
-                    setSelectedCompanies([]);
-                    setQ('');
-                  }}
-                  onRecompute={() => setMode('recompute')}
-                />
-              )}
-
-              <div className="note-banner">
-                <span>◈</span>
-                <span>
-                  <b>池内样本口径</b>：初始基金份额（同一只基金的 A/C/E 类不重复占位）、
-                  成立满 {meta?.caliber.minTrackYears ?? 5} 年、最新规模 ≥ {meta?.caliber.minScaleYi ?? 2} 亿元（剔除迷你基金）。
-                  <br />
-                  <b>筛选管线</b>：{pipelineText}
-                  「同类」口径为<b>池内排名</b>，不是 Wind 二级分类同类。年化收益由对应窗口的累计涨幅折算几何年化；
-                  卡玛比率按它自己那个窗口单独计算（该窗口年化收益 ÷ 该窗口 |最大回撤|），不混用另外两条窗口的数字。
-                  <br />
-                  <b>收益口径</b>：各窗口的区间涨幅与最大回撤均由<b>复权净值</b>逐日重算（分红按再投资处理）。
-                  抽样与 Wind 复权净值增长率对账：最大回撤误差 ≤ 0.03 个百分点，区间收益相对误差 &lt; 2%
-                  （残差来自日增长率保留两位小数后的累乘）。
-                  {(view.stats.managerUnknown ?? 0) > 0 && (
-                    <>
-                      <br />
-                      <b style={{ color: '#a5601c' }}>数据缺口</b>：当前 {view.stats.managerUnknown} 只基金的基金经理任职起始日在东财口径下缺失，
-                      「经理满 {criteria.managerMinYears} 年」这一步暂按待核放行，页面不对其做剔除。该列由东财 F10 经理变动页逐只回填，回填后重新出榜。
-                    </>
-                  )}
-                </span>
-              </div>
-
-              {/* 分布图提到逐层明细之前：先看整体形状与离群点，再逐层下钻看谁被剔。
+              {/* 分布图紧跟筛选口径：这是本工具的核心图，调完口径立刻看到斩杀线怎么动。
                   搜索与公司筛选同时作用于分布图和明细表，两处口径保持一致。 */}
               <div className="toolbar">
                 <div className="search-box">
@@ -310,6 +263,52 @@ export default function App() {
                 <Scatter items={view.items} onSelect={setDrawerCode} />
               )}
 
+              <Funnel
+                stats={view.stats}
+                active={activeStage}
+                criteria={criteria}
+                onSelect={(k) => {
+                  setActiveStage(k);
+                  setShowTrace(true);
+                }}
+              />
+
+              {/* 池子被筛空时，原因要紧跟漏斗给出，别让用户滚到逐层明细才发现一句解释。 */}
+              {!loading && view.items.length === 0 && (
+                <EmptyState
+                  view={view}
+                  hasFilter={selectedCompanies.length > 0 || !!q}
+                  onClearFilter={() => {
+                    setSelectedCompanies([]);
+                    setQ('');
+                  }}
+                  onRecompute={() => setMode('recompute')}
+                />
+              )}
+
+              <div className="note-banner">
+                <span>◈</span>
+                <span>
+                  <b>池内样本口径</b>：初始基金份额（同一只基金的 A/C/E 类不重复占位）、
+                  成立满 {meta?.caliber.minTrackYears ?? 5} 年、最新规模 ≥ {meta?.caliber.minScaleYi ?? 2} 亿元（剔除迷你基金）。
+                  <br />
+                  <b>筛选管线</b>：{pipelineText}
+                  「同类」口径为<b>池内排名</b>，不是 Wind 二级分类同类。年化收益由对应窗口的累计涨幅折算几何年化；
+                  卡玛比率按它自己那个窗口单独计算（该窗口年化收益 ÷ 该窗口 |最大回撤|），不混用另外两条窗口的数字。
+                  <br />
+                  <b>收益口径</b>：各窗口的区间涨幅与最大回撤均由<b>复权净值</b>逐日重算（分红按再投资处理）。
+                  抽样与 Wind 复权净值增长率对账：最大回撤误差 ≤ 0.03 个百分点，区间收益相对误差 &lt; 2%
+                  （残差来自日增长率保留两位小数后的累乘）。
+                  {(view.stats.managerUnknown ?? 0) > 0 && (
+                    <>
+                      <br />
+                      <b style={{ color: '#a5601c' }}>数据缺口</b>：当前 {view.stats.managerUnknown} 只基金的基金经理任职起始日在东财口径下缺失，
+                      「经理满 {criteria.managerMinYears} 年」这一步暂按待核放行，页面不对其做剔除。该列由东财 F10 经理变动页逐只回填，回填后重新出榜。
+                    </>
+                  )}
+                </span>
+              </div>
+
               {/* 逐层明细既是「筛选过程」也是最终产品列表：第 7 层就是入榜名单，
                   再单独列一张相同的表属于重复，已移除。 */}
               <div className="trace-section">
@@ -375,7 +374,7 @@ export default function App() {
             <div className="loading">
               <div>
                 <div className="spinner" style={{ margin: '0 auto 10px' }} />
-                正在加载基金池
+                正在加载基金斩杀线
               </div>
             </div>
           )}

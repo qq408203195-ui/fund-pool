@@ -24,8 +24,8 @@ export default function Sidebar({ meta, activePool, onSelect }: Props) {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
-            <div className="brand-logo">池</div>
-            <div className="brand-name">基金池</div>
+            <div className="brand-logo">斩</div>
+            <div className="brand-name">基金斩杀线</div>
           </div>
         </div>
       </aside>
@@ -36,12 +36,12 @@ export default function Sidebar({ meta, activePool, onSelect }: Props) {
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-mark">
-          <div className="brand-logo">池</div>
+          <div className="brand-logo">斩</div>
           <div>
-            <div className="brand-name">基金池</div>
+            <div className="brand-name">基金斩杀线</div>
           </div>
         </div>
-        <div className="brand-sub">WIND 数据 · 可视化优选</div>
+        <div className="brand-sub">WIND 数据 · 优中选优</div>
       </div>
 
       <nav className="nav">

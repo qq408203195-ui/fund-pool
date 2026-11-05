@@ -1,4 +1,4 @@
-import type { MetaInfo, PoolView, PoolTrace, FundDetail, Criteria } from './types';
+import type { MetaInfo, PoolView, PoolTrace, FundDetail, Criteria, BacktestData } from './types';
 
 const BASE = '/api';
 
@@ -58,4 +58,5 @@ export const api = {
     }),
   fund: (code: string, criteria?: Criteria) => get<FundDetail>(`/funds/${code}`, criteriaParams(criteria)),
   trace: (id: string, criteria?: Criteria) => get<PoolTrace>(`/pools/${id}/trace`, criteriaParams(criteria)),
+  backtest: () => get<BacktestData>('/backtest'),
 };

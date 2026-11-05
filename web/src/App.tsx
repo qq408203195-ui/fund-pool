@@ -9,6 +9,7 @@ import Scatter from './components/Scatter';
 import FundDrawer from './components/FundDrawer';
 import EmptyState from './components/EmptyState';
 import FilterControls, { DEFAULT_CRITERIA } from './components/FilterControls';
+import BacktestCard from './components/BacktestCard';
 import { fmtPercentile } from './utils/format';
 
 const DEFAULT_POOL = 'active-equity';
@@ -367,6 +368,9 @@ export default function App() {
                     ` · 榜首回撤分位 ${fmtPercentile(view.items[0].mddPercentile)}`}
                 </div>
               )}
+
+              {/* 页面最下方：斩杀线组合的季度轮换回测净值曲线（主动权益池口径） */}
+              <BacktestCard />
             </>
           )}
 

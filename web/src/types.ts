@@ -162,3 +162,40 @@ export interface PoolTrace {
   caliber: Criteria;
   stages: TraceStage[];
 }
+
+/** 季度轮换回测（斩杀线右上角 5 只等权），由服务端脚本预生成 */
+export interface QuarterPick {
+  code: string;
+  name: string;
+  ann3y: number;
+  mdd3y: number;
+}
+
+export interface BacktestQuarter {
+  date: string;
+  universe: number;
+  passed: number;
+  onLine: number;
+  filled?: boolean;
+  picks: QuarterPick[];
+}
+
+export interface BacktestStats {
+  cum: number;
+  ann: number;
+  mdd: number;
+  calmar: number | null;
+}
+
+export interface BacktestData {
+  generatedAt: string;
+  pool: string;
+  start: string;
+  end: string;
+  dates: string[];
+  strategyNav: number[];
+  benchmarkNav: number[];
+  quarters: BacktestQuarter[];
+  stats: { strategy: BacktestStats; benchmark: BacktestStats };
+  rules: string;
+}

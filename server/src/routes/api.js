@@ -1,7 +1,28 @@
 import express from 'express';
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { getPoolView, getPoolTrace, listPools, getMetaInfo, getFundDetail } from '../repo.js';
 import { POOL_BY_ID } from '../config/pools.js';
 import { getMeta } from '../db.js';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const BACKTEST_FILE = path.join(HERE, '..', '..', 'data', 'backtest.json');
+
+/** 回测结果读一次缓存住；文件更新（重跑脚本）后重启进程即可生效 */
+let backtestCache;
+function loadBacktest() {
+  if (backtestCache === undefined) {
+    try {
+      backtestCache = existsSync(BACKTEST_FILE)
+        ? JSON.parse(readFileSync(BACKTEST_FILE, 'utf-8'))
+        : null;
+    } catch {
+      backtestCache = null;
+    }
+  }
+  return backtestCache;
+}
 
 export function createApiRouter() {
   const router = express.Router();
@@ -67,6 +88,13 @@ export function createApiRouter() {
     });
     if (!view) return res.status(404).json({ error: '池子数据不可用' });
     res.json(view);
+  });
+
+  // 季度轮换回测（斩杀线右上角 5 只等权），数据由 server/scripts/backtest_quarterly.py 生成
+  router.get('/backtest', (_req, res) => {
+    const doc = loadBacktest();
+    if (!doc) return res.status(404).json({ error: '回测数据尚未生成' });
+    res.json(doc);
   });
 
   router.get('/funds/:code', (req, res) => {
